@@ -54,7 +54,7 @@ def get_reports(ns):
                                                             plural=crd, namespace=ns)['items']
         logger.info(f'found {len(crd_list)} reports in namespace {ns}')
         for item in crd_list:
-            process_item(item, ns)
+            process_item(item)
 
 
 def process_item(item):
