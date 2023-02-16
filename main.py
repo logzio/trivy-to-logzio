@@ -134,5 +134,3 @@ if __name__ == '__main__':
     run()
     logger.info(f'Sent {send_counter} logs')
     logger.info('Finished run')
-    # todo - remove:
-    time.sleep(600)

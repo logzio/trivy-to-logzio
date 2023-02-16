@@ -47,7 +47,7 @@ metadata:
     k8s-app: trivy-to-logzio
     version: v1
 spec:
-  schedule: "55 18 * * *"
+  schedule: "12 20 * * *"
   jobTemplate:
     spec:
       template:
@@ -63,8 +63,6 @@ spec:
           - name: trivy-to-logzio
             image: mirii1994/trivy-to-logz:test
             imagePullPolicy: Always
-            securityContext:
-              privileged: true
             env:
             - name: LOGZIO_LOG_SHIPPING_TOKEN
               valueFrom:

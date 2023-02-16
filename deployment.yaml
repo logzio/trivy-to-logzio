@@ -61,9 +61,6 @@ spec:
       containers:
       - name: trivy-to-logzio
         image: mirii1994/trivy-to-logz:test
-        imagePullPolicy: Always
-        securityContext:
-          privileged: true
         env:
         - name: LOGZIO_LOG_SHIPPING_TOKEN
           valueFrom:
