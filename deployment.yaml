@@ -1,0 +1,81 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: trivy-to-logzio
+  namespace: monitoring
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: trivy-to-logzio
+  namespace: monitoring
+rules:
+- apiGroups:
+  - "aquasecurity.github.io"
+  - ""
+  resources:
+  - namespaces
+  - vulnerabilityreports
+  - pods
+  verbs:
+  - get
+  - list
+  - watch
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: trivy-to-logzio
+roleRef:
+  kind: ClusterRole
+  name: trivy-to-logzio
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: ServiceAccount
+  name: trivy-to-logzio
+  namespace: monitoring
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trivy-to-logzio
+  namespace: monitoring
+  labels:
+    k8s-app: trivy-to-logzio
+    version: v1
+spec:
+  selector:
+    matchLabels:
+      k8s-app: trivy-to-logzio
+  template:
+    metadata:
+      labels:
+        k8s-app: trivy-to-logzio
+        version: v1
+    spec:
+      serviceAccount: trivy-to-logzio
+      serviceAccountName: trivy-to-logzio
+      containers:
+      - name: trivy-to-logzio
+        image: mirii1994/trivy-to-logz:test
+        imagePullPolicy: Always
+        securityContext:
+          privileged: true
+        env:
+        - name: LOGZIO_LOG_SHIPPING_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: logzio-logs-secret
+              key: logzio-log-shipping-token
+        - name: LOGZIO_LOG_LISTENER
+          valueFrom:
+            secretKeyRef:
+              name: logzio-logs-secret
+              key: logzio-log-listener
+        - name: ENV_ID
+          value: 'my_env_id'
+      terminationGracePeriodSeconds: 30
+
