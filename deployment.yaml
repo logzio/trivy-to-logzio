@@ -15,10 +15,12 @@ rules:
 - apiGroups:
   - "aquasecurity.github.io"
   - ""
+  - apps
   resources:
   - namespaces
   - vulnerabilityreports
   - pods
+  - daemonsets
   verbs:
   - get
   - list
