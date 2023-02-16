@@ -19,8 +19,6 @@ rules:
   resources:
   - namespaces
   - vulnerabilityreports
-  - pods
-  - daemonsets
   verbs:
   - get
   - list
