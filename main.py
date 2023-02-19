@@ -69,18 +69,21 @@ def get_reports(ns):
 def process_item(item):
     try:
         metadata = get_report_metadata(item)
+        related_pods = get_pods_data(metadata['kubernetes'])
         if metadata is not None:
-            for vulnerability in item['report']['vulnerabilities']:
-                create_and_send_log(vulnerability, metadata)
+            for pod_data in related_pods:
+                for vulnerability in item['report']['vulnerabilities']:
+                    create_and_send_log(vulnerability, metadata, pod_data)
     except Exception as e:
         logger.debug(f'Item: {item}')
         logger.warning(f'Error while processing item: {e}')
 
 
-def create_and_send_log(vulnerability, metadata):
+def create_and_send_log(vulnerability, metadata, pod_data):
     log = dict()
     log.update(metadata)
     log.update(vulnerability)
+    log['kubernetes'].update(pod_data)
     # logzio parameters:
     log['type'] = 'trivy_scan'
     log['env_id'] = ENV_ID
@@ -94,7 +97,7 @@ def get_report_metadata(item):
                                 'creationTimestamp': item['metadata']['creationTimestamp'],
                                 'generation': item['metadata']['generation'],
                                 'name': item['metadata']['name']}
-        metadata['kubernetes'] = {'pod_name': item['metadata']['labels']['trivy-operator.resource.name'],
+        metadata['kubernetes'] = {'resource_name': item['metadata']['labels']['trivy-operator.resource.name'],
                                   'namespace_name': item['metadata']['labels']['trivy-operator.resource.namespace'],
                                   'container_name': item['metadata']['labels']['trivy-operator.container.name'],
                                   'resource_kind': item['metadata']['labels']['trivy-operator.resource.kind']}
@@ -105,6 +108,26 @@ def get_report_metadata(item):
     except Exception as e:
         logger.error(f'Error while getting metadata from item: {e}')
         return None
+
+
+def get_pods_data(resource_data):
+    try:
+        ns_pods = v1_client.list_namespaced_pod(namespace=resource_data['namespace_name'])
+        related_pods = []
+        for ns_pod in ns_pods.items:
+            if ns_pod.metadata.owner_references[0].name == resource_data['resource_name']:
+                pod_data = {'pod_name': ns_pod.metadata.name,
+                            'pod_ip': ns_pod.status.pod_ip,
+                            'host_ip': ns_pod.status.host_ip,
+                            'node_name': ns_pod.spec.node_name}
+                related_pods.append(pod_data)
+        logger.debug(f'Related pods for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]}: {related_pods}')
+        if len(related_pods) == 0:
+            logger.error(f'Could not find pods matching the details, report for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]} will not be send')
+        return related_pods
+    except Exception as e:
+        logger.error(f'Error while extracting host info for {resource_data["resource_kind"]}/{resource_data["resource_name"]} from namespace {ns}: {e}')
+        return {}
 
 
 def send_to_logzio(log):
