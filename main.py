@@ -20,7 +20,6 @@ v1_client = client.CoreV1Api()
 api_instance = client.AppsV1Api(api_client)
 http = urllib3.PoolManager()
 
-# todo: delete the following-
 send_counter = 0
 
 
