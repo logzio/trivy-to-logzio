@@ -47,7 +47,7 @@ metadata:
     k8s-app: trivy-to-logzio
     version: v1
 spec:
-  schedule: "12 20 * * *"
+  schedule: "0 7 * * *"
   jobTemplate:
     spec:
       template:
