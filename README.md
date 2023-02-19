@@ -42,12 +42,16 @@ In the cron job file, edit the following fields:
 - `schedule` - the cron expression which schedules the cron job. For example - `"0 7 * * *"` will trigger the job to run everyday at 07:00 AM (cluster timezone).
 - `ENV_ID value` - replace default value `my_env_id` with your env id.
 
+#### Modifying log level
+
+By default, the script is set to log level `INFO`. 
+To change it, add to your cron job a new env var `LOG_LEVEL`, and set it to one of the following: `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`. 
+
 ### 4. Deploy your cron job
 
 ```shell
 kubectl apply -f /path/to/your/file.yaml
 ```
-
 
 #### 5.  Check Logz.io for your logs
 
