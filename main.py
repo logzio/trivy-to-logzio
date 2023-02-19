@@ -73,21 +73,21 @@ def process_item(item):
         if metadata is not None:
             for pod_data in related_pods:
                 for vulnerability in item['report']['vulnerabilities']:
-                    create_and_send_log(metadata, vulnerability, pod_data)
+                    create_and_send_log(metadata, pod_data, vulnerability)
                 if len(item['report']['vulnerabilities']) == 0:
-                    create_and_send_log(metadata)
+                    create_and_send_log(metadata, pod_data)
     except Exception as e:
         logger.debug(f'Item: {item}')
         logger.warning(f'Error while processing item: {e}')
 
 
-def create_and_send_log(metadata, vulnerability=None, pod_data=None):
+def create_and_send_log(metadata, pod_data, vulnerability=None):
     log = dict()
     log.update(metadata)
+    log['kubernetes'].update(pod_data)
     log.update(get_logzio_fields())
     if vulnerability is not None:
         log.update(vulnerability)
-        log['kubernetes'].update(pod_data)
     else:
         log['message'] = 'No vulnerabilities for this pod at the moment.'
     send_to_logzio(log)
@@ -136,11 +136,11 @@ def get_pods_data(resource_data):
             f'Related pods for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]}: {related_pods}')
         if len(related_pods) == 0:
             logger.info(
-                f'No available pods running matching report for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]} will not be send')
+                f'No available pods running matching report for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]}, will not be sent')
         return related_pods
     except Exception as e:
         logger.error(
-            f'Error while extracting host info for {resource_data["resource_kind"]}/{resource_data["resource_name"]} from namespace {ns}: {e}')
+            f'Error while extracting host info for {resource_data["resource_kind"]}/{resource_data["resource_name"]} from namespace {resource_data["namespace_name"]}: {e}')
         return {}
 
 
