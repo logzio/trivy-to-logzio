@@ -8,11 +8,21 @@ import urllib3
 ENV_LOGS_TOKEN = 'LOGZIO_LOG_SHIPPING_TOKEN'
 ENV_LOGZIO_LISTENER = 'LOGZIO_LOG_LISTENER'
 ENV_ENV_ID = 'ENV_ID'
+ENV_LOG_LEVEL = 'LOG_LEVEL'
 LOGZIO_TOKEN = os.getenv(ENV_LOGS_TOKEN, '')
 LOGZIO_LISTENER = os.getenv(ENV_LOGZIO_LISTENER, 'https://listener.logz.io:8071')
 ENV_ID = os.getenv(ENV_ENV_ID, '')
 
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=logging.INFO)
+
+def get_log_level():
+    try:
+        lvl = os.getenv(ENV_LOG_LEVEL, 'INFO').upper()
+        return logging.getLevelName(lvl)
+    except Exception as e:
+        return logging.INFO
+
+
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=get_log_level())
 logger = logging.getLogger()
 config.load_incluster_config()
 api_client = client.ApiClient()
