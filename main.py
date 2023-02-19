@@ -75,6 +75,7 @@ def process_item(item):
                 for vulnerability in item['report']['vulnerabilities']:
                     create_and_send_log(metadata, pod_data, vulnerability)
                 if len(item['report']['vulnerabilities']) == 0:
+                    logger.debug(f'No vulnerabilities for {metadata["kubernetes"]["resource_kind"]}/{metadata["kubernetes"]["resource_name"]}')
                     create_and_send_log(metadata, pod_data)
     except Exception as e:
         logger.debug(f'Item: {item}')
