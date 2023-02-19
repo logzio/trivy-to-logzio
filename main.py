@@ -73,27 +73,37 @@ def process_item(item):
         if metadata is not None:
             for pod_data in related_pods:
                 for vulnerability in item['report']['vulnerabilities']:
-                    create_and_send_log(vulnerability, metadata, pod_data)
+                    create_and_send_log(metadata, vulnerability, pod_data)
+                if len(item['report']['vulnerabilities']) == 0:
+                    create_and_send_log(metadata)
     except Exception as e:
         logger.debug(f'Item: {item}')
         logger.warning(f'Error while processing item: {e}')
 
 
-def create_and_send_log(vulnerability, metadata, pod_data):
+def create_and_send_log(metadata, vulnerability=None, pod_data=None):
     log = dict()
     log.update(metadata)
-    log.update(vulnerability)
-    log['kubernetes'].update(pod_data)
-    # logzio parameters:
-    log['type'] = 'trivy_scan'
-    log['env_id'] = ENV_ID
+    log.update(get_logzio_fields())
+    if vulnerability is not None:
+        log.update(vulnerability)
+        log['kubernetes'].update(pod_data)
+    else:
+        log['message'] = 'No vulnerabilities for this pod at the moment.'
     send_to_logzio(log)
+
+
+def get_logzio_fields():
+    return {'type': 'trivy_scan',
+            'env_id': ENV_ID}
 
 
 def get_report_metadata(item):
     try:
         metadata = dict()
-        metadata['metadata'] = {'annotations': {'trivy-operator.aquasecurity.github.io/report-ttl': item['metadata']['annotations']['trivy-operator.aquasecurity.github.io/report-ttl']},
+        metadata['metadata'] = {'annotations': {
+            'trivy-operator.aquasecurity.github.io/report-ttl': item['metadata']['annotations'][
+                'trivy-operator.aquasecurity.github.io/report-ttl']},
                                 'creationTimestamp': item['metadata']['creationTimestamp'],
                                 'generation': item['metadata']['generation'],
                                 'name': item['metadata']['name']}
@@ -101,7 +111,8 @@ def get_report_metadata(item):
                                   'namespace_name': item['metadata']['labels']['trivy-operator.resource.namespace'],
                                   'container_name': item['metadata']['labels']['trivy-operator.container.name'],
                                   'resource_kind': item['metadata']['labels']['trivy-operator.resource.kind']}
-        metadata['report'] = {'artifact': {'repository': item['report']['artifact']['repository'], 'tag': item['report']['artifact']['tag']},
+        metadata['report'] = {'artifact': {'repository': item['report']['artifact']['repository'],
+                                           'tag': item['report']['artifact']['tag']},
                               'registry': item['report']['registry'],
                               'scanner': item['report']['scanner']}
         return metadata
@@ -121,12 +132,15 @@ def get_pods_data(resource_data):
                             'host_ip': ns_pod.status.host_ip,
                             'node_name': ns_pod.spec.node_name}
                 related_pods.append(pod_data)
-        logger.debug(f'Related pods for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]}: {related_pods}')
+        logger.debug(
+            f'Related pods for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]}: {related_pods}')
         if len(related_pods) == 0:
-            logger.error(f'Could not find pods matching the details, report for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]} will not be send')
+            logger.info(
+                f'No available pods running matching report for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]} will not be send')
         return related_pods
     except Exception as e:
-        logger.error(f'Error while extracting host info for {resource_data["resource_kind"]}/{resource_data["resource_name"]} from namespace {ns}: {e}')
+        logger.error(
+            f'Error while extracting host info for {resource_data["resource_kind"]}/{resource_data["resource_name"]} from namespace {ns}: {e}')
         return {}
 
 
