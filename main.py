@@ -131,7 +131,8 @@ def get_pods_data(resource_data):
                 pod_data = {'pod_name': ns_pod.metadata.name,
                             'pod_ip': ns_pod.status.pod_ip,
                             'host_ip': ns_pod.status.host_ip,
-                            'node_name': ns_pod.spec.node_name}
+                            'node_name': ns_pod.spec.node_name,
+                            'pod_uid': ns_pod.metadata.uid}
                 related_pods.append(pod_data)
         logger.debug(
             f'Related pods for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]}: {related_pods}')
