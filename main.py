@@ -133,6 +133,13 @@ def get_pods_data(resource_data):
                             'host_ip': ns_pod.status.host_ip,
                             'node_name': ns_pod.spec.node_name,
                             'pod_uid': ns_pod.metadata.uid}
+                if resource_data['resource_kind'].lower() == 'replicaset':
+                    try:
+                        rs_data = api_instance.read_namespaced_replica_set(name=resource_data['resource_name'], namespace=resource_data['namespace_name'])
+                        if rs_data.metadata.owner_references[0].kind.lower() == 'deployment':
+                            pod_data['deployment_name'] = rs_data.metadata.owner_references[0].name
+                    except Exception as e:
+                        logger.error(f'Error while trying to get deployment of replicaset: {e}')
                 related_pods.append(pod_data)
         logger.debug(
             f'Related pods for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]}: {related_pods}')

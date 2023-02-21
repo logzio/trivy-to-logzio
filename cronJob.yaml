@@ -20,6 +20,8 @@ rules:
   - namespaces
   - vulnerabilityreports
   - pods
+  - replicasets
+  - deployments
   verbs:
   - get
   - list
