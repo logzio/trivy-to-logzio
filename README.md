@@ -4,7 +4,7 @@ This project allows sending [Trivy](https://github.com/aquasecurity/trivy-operat
 
 ## Prerequisites:
 
--[Trivy operator](https://github.com/aquasecurity/trivy-operator) running on your K8S cluster.
+- [Trivy operator](https://github.com/aquasecurity/trivy-operator) running on your K8S cluster.
 
 ## Getting Started
 
