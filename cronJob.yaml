@@ -64,7 +64,7 @@ spec:
           restartPolicy: OnFailure
           containers:
           - name: trivy-to-logzio
-            image: mirii1994/trivy-to-logz:test
+            image: logzio/trivy-to-logzio:latest
             imagePullPolicy: Always
             env:
             - name: LOGZIO_LOG_SHIPPING_TOKEN
