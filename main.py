@@ -207,7 +207,7 @@ def run_continuously(interval=1):
 def wait_for_trivy_scan():
     backoff = 1
     found_scan = False
-    logger.info('Waiting for Trivy scan to create reports')
+    logger.info('Waiting for Trivy scan to create reports. This may take a few minutes...')
     while not found_scan:
         crd_list = custom_api.list_namespaced_custom_object(group=GROUP, version=VERSION,
                                                             plural='vulnerabilityreports', namespace='')['items']
@@ -216,8 +216,9 @@ def wait_for_trivy_scan():
             logger.debug(f'Could not find Trivy scan resources. Sleeping for {backoff} seconds')
             time.sleep(backoff)
         else:
-            logger.info('Found Trivy reports')
+            logger.debug(f'Found first {len(crd_list)} reports. Giving Trivy some more time to create reports')
             found_scan = True
+            time.sleep(300)
 
 
 if __name__ == '__main__':
