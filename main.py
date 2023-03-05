@@ -204,10 +204,33 @@ def run_continuously(interval=1):
     return continuous_thread
 
 
+def wait_for_trivy_scan():
+    backoff = 1
+    found_scan = False
+    logger.info('Waiting for Trivy scan to create reports')
+    while not found_scan:
+        crd_list = custom_api.list_namespaced_custom_object(group=GROUP, version=VERSION,
+                                                            plural='vulnerabilityreports', namespace='')['items']
+        if len(crd_list) == 0:
+            backoff *= 2
+            logger.debug(f'Could not find Trivy scan resources. Sleeping for {backoff} seconds')
+            time.sleep(backoff)
+        else:
+            logger.info('Found Trivy reports')
+            found_scan = True
+
+
 if __name__ == '__main__':
+    logger.info('Starting trivy to logzio')
+
     # scheduled run
     schedule.every().day.at(RUN_SCHEDULE).do(run_logic)
     t_scheduled = run_continuously()
+
+    # wait for trivy to scan
+    t_scan = threading.Thread(target=wait_for_trivy_scan, name='scan')
+    t_scan.start()
+    t_scan.join()
 
     # first run upon deployment
     t_first = threading.Thread(target=run_logic, name='first run')
