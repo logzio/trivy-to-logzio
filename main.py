@@ -188,8 +188,7 @@ def run_continuously(interval=1):
     """Continuously run, while executing pending jobs at each
     elapsed time interval.
     """
-    logger.info(f'Scheduled thread is set to run everyday at: {RUN_SCHEDULE}')
-    logger.info('Starting scheduled thread')
+    logger.info('Starting scheduled thread...')
     cease_continuous_run = threading.Event()
 
     class ScheduleThread(threading.Thread):
@@ -201,40 +200,51 @@ def run_continuously(interval=1):
 
     continuous_thread = ScheduleThread(name='scheduled')
     continuous_thread.start()
+    logger.info(f'Scheduled thread is set to run everyday at: {RUN_SCHEDULE}')
     return continuous_thread
+
+
+def get_current_resources():
+    resources = v1_client.list_pod_for_all_namespaces(watch=False)
+    owner_names = []
+    for resource in resources.items:
+        name = resource.metadata.owner_references[0].name
+        if name not in owner_names:
+            owner_names.append(name)
+    return owner_names
 
 
 def wait_for_trivy_scan():
     backoff = 1
-    found_scan = False
+    scans = 0
     logger.info('Waiting for Trivy scan to create reports. This may take a few minutes...')
-    while not found_scan:
+    resources = get_current_resources()
+    while scans < len(resources):
         crd_list = custom_api.list_namespaced_custom_object(group=GROUP, version=VERSION,
                                                             plural='vulnerabilityreports', namespace='')['items']
-        if len(crd_list) == 0:
+        scans = len(crd_list)
+        logger.debug(f'Currently found {scans} scans, and there are at least {len(resources)} resources on the cluster')
+        if scans < len(resources):
             backoff *= 2
-            logger.debug(f'Could not find Trivy scan resources. Sleeping for {backoff} seconds')
+            logger.debug(f'Waiting for trivy...')
             time.sleep(backoff)
-        else:
-            logger.debug(f'Found first {len(crd_list)} reports. Giving Trivy some more time to create reports')
-            found_scan = True
-            time.sleep(300)
+    logger.info('Done waiting for Trivy scans')
 
 
 if __name__ == '__main__':
-    logger.info('Starting trivy to logzio')
+    logger.info('Starting Trivy-to-Logzio')
 
     # scheduled run
     schedule.every().day.at(RUN_SCHEDULE).do(run_logic)
     t_scheduled = run_continuously()
 
     # wait for trivy to scan
-    t_scan = threading.Thread(target=wait_for_trivy_scan, name='scan')
+    t_scan = threading.Thread(target=wait_for_trivy_scan, name='wait-for-scan')
     t_scan.start()
     t_scan.join()
 
     # first run upon deployment
-    t_first = threading.Thread(target=run_logic, name='first run')
+    t_first = threading.Thread(target=run_logic, name='first-run')
     t_first.start()
     t_first.join()
 
