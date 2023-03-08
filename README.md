@@ -4,7 +4,7 @@ This project allows sending [Trivy](https://github.com/aquasecurity/trivy-operat
 
 To use it, see Logz.io's [logzio-trivy Helm Chart](https://github.com/logzio/logzio-helm/tree/master/charts/logzio-trivy).
 
-## Changlog:
+## Changelog:
 
 - **0.1.0**:
   - **Breaking changes**:
