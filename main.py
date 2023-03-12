@@ -2,16 +2,23 @@ import json
 import logging
 import os
 import time
+import threading
 from kubernetes import client, config
 import urllib3
+import schedule
 
 ENV_LOGS_TOKEN = 'LOGZIO_LOG_SHIPPING_TOKEN'
 ENV_LOGZIO_LISTENER = 'LOGZIO_LOG_LISTENER'
 ENV_ENV_ID = 'ENV_ID'
 ENV_LOG_LEVEL = 'LOG_LEVEL'
+ENV_SCHEDULE = 'SCHEDULE'
 LOGZIO_TOKEN = os.getenv(ENV_LOGS_TOKEN, '')
 LOGZIO_LISTENER = os.getenv(ENV_LOGZIO_LISTENER, 'https://listener.logz.io:8071')
 ENV_ID = os.getenv(ENV_ENV_ID, '')
+RUN_SCHEDULE = os.getenv(ENV_SCHEDULE, '07:00')
+GROUP = 'aquasecurity.github.io'
+VERSION = 'v1alpha1'
+CRDS = ['vulnerabilityreports']
 
 
 def get_log_level():
@@ -22,23 +29,20 @@ def get_log_level():
         return logging.INFO
 
 
-logging.basicConfig(format='%(asctime)s - %(levelname)s - %(message)s', level=get_log_level())
+logging.basicConfig(format='%(asctime)s - %(levelname)s - %(threadName)s - %(message)s', level=get_log_level())
 logger = logging.getLogger()
 config.load_incluster_config()
 api_client = client.ApiClient()
 v1_client = client.CoreV1Api()
 api_instance = client.AppsV1Api(api_client)
+custom_api = client.CustomObjectsApi(api_client)
 http = urllib3.PoolManager()
 
-send_counter = 0
 
-
-def run():
+def run_logic():
     if not is_valid_input():
         return
-    namespaces = get_namespaces()
-    for ns in namespaces:
-        get_reports(ns.metadata.name)
+    get_reports()
 
 
 def is_valid_input():
@@ -55,13 +59,11 @@ def get_namespaces():
     return v1_client.list_namespace().items
 
 
-def get_reports(ns):
-    custom_api = client.CustomObjectsApi(api_client)
-    crds = ['vulnerabilityreports']
-    for crd in crds:
-        crd_list = custom_api.list_namespaced_custom_object(group='aquasecurity.github.io', version='v1alpha1',
-                                                            plural=crd, namespace=ns)['items']
-        logger.info(f'found {len(crd_list)} reports in namespace {ns}')
+def get_reports():
+    for crd in CRDS:
+        crd_list = custom_api.list_namespaced_custom_object(group=GROUP, version=VERSION,
+                                                            plural=crd, namespace='')['items']
+        logger.info(f'found {len(crd_list)} reports')
         for item in crd_list:
             process_item(item)
 
@@ -160,13 +162,11 @@ def send_to_logzio(log):
     data_body_bytes = str.encode(data_body)
     url = f'{LOGZIO_LISTENER}?token={LOGZIO_TOKEN}'
     headers = {'Content-type': 'application/json'}
-    global send_counter
     while try_num <= max_retries:
         try:
             time.sleep(try_num * 2)
             r = http.request(method='POST', url=url, headers=headers, body=data_body_bytes)
             if r.status == 200:
-                send_counter += 1
                 logger.debug(f'Successfully sent log {log} to logzio')
                 return
             elif r.status == 400:
@@ -184,8 +184,68 @@ def send_to_logzio(log):
             try_num += 1
 
 
+def run_continuously(interval=1):
+    """Continuously run, while executing pending jobs at each
+    elapsed time interval.
+    """
+    logger.info('Starting scheduled thread...')
+    cease_continuous_run = threading.Event()
+
+    class ScheduleThread(threading.Thread):
+        @classmethod
+        def run(cls):
+            while not cease_continuous_run.is_set():
+                schedule.run_pending()
+                time.sleep(interval)
+
+    continuous_thread = ScheduleThread(name='scheduled')
+    continuous_thread.start()
+    logger.info(f'Scheduled thread is set to run everyday at: {RUN_SCHEDULE}')
+    return continuous_thread
+
+
+def get_current_resources():
+    resources = v1_client.list_pod_for_all_namespaces(watch=False)
+    owner_names = []
+    for resource in resources.items:
+        name = resource.metadata.owner_references[0].name
+        if name not in owner_names:
+            owner_names.append(name)
+    return owner_names
+
+
+def wait_for_trivy_scan():
+    timeout = 5
+    scans = 0
+    logger.info('Waiting for Trivy scan to create reports. This may take a few minutes...')
+    resources = get_current_resources()
+    while scans < len(resources):
+        crd_list = custom_api.list_namespaced_custom_object(group=GROUP, version=VERSION,
+                                                            plural='vulnerabilityreports', namespace='')['items']
+        scans = len(crd_list)
+        logger.debug(f'Currently found {scans} scans, and there are at least {len(resources)} resources on the cluster')
+        if scans < len(resources):
+            logger.debug(f'Waiting for trivy...')
+            time.sleep(timeout)
+    logger.info('Done waiting for Trivy scans')
+
+
 if __name__ == '__main__':
-    logger.info('Started run')
-    run()
-    logger.info(f'Sent {send_counter} logs')
-    logger.info('Finished run')
+    logger.info('Starting Trivy-to-Logzio')
+
+    # scheduled run
+    schedule.every().day.at(RUN_SCHEDULE).do(run_logic)
+    t_scheduled = run_continuously()
+
+    # wait for trivy to scan
+    t_scan = threading.Thread(target=wait_for_trivy_scan, name='wait-for-scan')
+    t_scan.start()
+    t_scan.join()
+
+    # first run upon deployment
+    t_first = threading.Thread(target=run_logic, name='first-run')
+    t_first.start()
+    t_first.join()
+
+    # waiting for the scheduled thread to finish prevents the script from exiting
+    t_scheduled.join()
