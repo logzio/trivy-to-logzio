@@ -6,6 +6,8 @@ To use it, see Logz.io's [logzio-trivy Helm Chart](https://github.com/logzio/log
 
 ## Changelog:
 
+- **0.2.0**:
+  - Watch events once the code starts running, along with a daily scheduled scan for reports.
 - **0.1.0**:
   - **Breaking changes**:
     - Script will run always.
