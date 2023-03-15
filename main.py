@@ -214,13 +214,13 @@ def run_triggered(crd_object):
 def watch_crd(custom_resource_name):
     api_client = client.ApiClient()
     custom_api = client.CustomObjectsApi(api_client)
-    watched_uids = []
+    watched_uids = list()
     while True:
         try:
             w = watch.Watch()
+            logger.debug('Starting watch stream')
             for event in w.stream(custom_api.list_namespaced_custom_object,
-                                  GROUP, VERSION, '', custom_resource_name, watch=True, timeout_seconds=0,
-                                  resource_version='0', resource_version_match='NotOlderThan'):
+                                  GROUP, VERSION, '', custom_resource_name, watch=True, timeout_seconds=300):
                 curr_uid = event['object']['metadata']['uid']
                 event_type = event['type'].lower()
                 resource_name = event['object']['metadata']['labels']['trivy-operator.container.name']
@@ -239,9 +239,9 @@ def watch_crd(custom_resource_name):
                     logger.info(f'Detected changes in security scan for {resource_name}')
                 t_trigger = threading.Thread(target=run_triggered, args=(event['object'],), name=f'watch_{resource_name}')
                 t_trigger.start()
-            logger.warning(f'Exited watch for {custom_resource_name}, will retry watch')
+            logger.debug(f'Finished timeout, about to restart watch')
+            w.stop()
         except Exception as e:
-            logger.info(f'So weird: {e}')
             logger.warning(f'Error while watching for new {custom_resource_name}: {e}, will retry watch')
             w.stop()
 
