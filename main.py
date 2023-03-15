@@ -205,28 +205,45 @@ def run_continuously(interval=1):
 
 
 def run_triggered(crd_object):
-    logger.info(f'Detected new security scan')
+    logger.info(f'Start processing security scan')
     logger.debug(crd_object)
     process_item(crd_object)
-    logger.info(f'Done processing new security scan')
+    logger.info(f'Done processing security scan')
 
 
 def watch_crd(custom_resource_name):
     api_client = client.ApiClient()
     custom_api = client.CustomObjectsApi(api_client)
+    watched_uids = []
     while True:
         try:
             w = watch.Watch()
             for event in w.stream(custom_api.list_namespaced_custom_object,
-                                  GROUP, VERSION, '', custom_resource_name, watch=True):
-                if event['type'].lower() == 'added':
-                    resource_name = event['object']['metadata']['labels']['trivy-operator.container.name']
-                    t_trigger = threading.Thread(target=run_triggered, args=(event['object'],), name=f'watch_{resource_name}')
-                    t_trigger.start()
-
+                                  GROUP, VERSION, '', custom_resource_name, watch=True, timeout_seconds=0,
+                                  resource_version='0', resource_version_match='NotOlderThan'):
+                curr_uid = event['object']['metadata']['uid']
+                event_type = event['type'].lower()
+                resource_name = event['object']['metadata']['labels']['trivy-operator.container.name']
+                if (curr_uid in watched_uids and event_type == 'added') or \
+                        (curr_uid not in watched_uids and event_type == 'deleted'):
+                    logger.debug(f'Event {event_type} for CRD uid {curr_uid} will be ignored')
+                    continue
+                if curr_uid in watched_uids and event_type == 'deleted':
+                    logger.debug(f'CRD with uid {curr_uid} deleted, removing uid from watched list')
+                    watched_uids.remove(curr_uid)
+                    continue
+                if curr_uid not in watched_uids:
+                    logger.debug(f'New CRD to watch: {curr_uid}')
+                    watched_uids.append(curr_uid)
+                if event_type == 'modified':
+                    logger.info(f'Detected changes in security scan for {resource_name}')
+                t_trigger = threading.Thread(target=run_triggered, args=(event['object'],), name=f'watch_{resource_name}')
+                t_trigger.start()
+            logger.warning(f'Exited watch for {custom_resource_name}, will retry watch')
         except Exception as e:
-            logger.error(f'Error while watching for new {custom_resource_name}: {e}')
-            raise e
+            logger.info(f'So weird: {e}')
+            logger.warning(f'Error while watching for new {custom_resource_name}: {e}, will retry watch')
+            w.stop()
 
 
 if __name__ == '__main__':
