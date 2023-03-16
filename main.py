@@ -5,6 +5,7 @@ import time
 import threading
 from kubernetes import client, config, watch
 import urllib3
+from urllib3 import exceptions
 import schedule
 
 ENV_LOGS_TOKEN = 'LOGZIO_LOG_SHIPPING_TOKEN'
@@ -215,35 +216,78 @@ def watch_crd(custom_resource_name):
     api_client = client.ApiClient()
     custom_api = client.CustomObjectsApi(api_client)
     watched_uids = list()
+    resource_version = 0
     while True:
         try:
             w = watch.Watch()
-            logger.debug('Starting watch stream')
-            for event in w.stream(custom_api.list_namespaced_custom_object,
-                                  GROUP, VERSION, '', custom_resource_name, watch=True, timeout_seconds=300):
-                curr_uid = event['object']['metadata']['uid']
-                event_type = event['type'].lower()
-                resource_name = event['object']['metadata']['labels']['trivy-operator.container.name']
-                if (curr_uid in watched_uids and event_type == 'added') or \
-                        (curr_uid not in watched_uids and event_type == 'deleted'):
-                    logger.debug(f'Event {event_type} for CRD uid {curr_uid} will be ignored')
-                    continue
-                if curr_uid in watched_uids and event_type == 'deleted':
-                    logger.debug(f'CRD with uid {curr_uid} deleted, removing uid from watched list')
-                    watched_uids.remove(curr_uid)
-                    continue
-                if curr_uid not in watched_uids:
-                    logger.debug(f'New CRD to watch: {curr_uid}')
-                    watched_uids.append(curr_uid)
-                if event_type == 'modified':
-                    logger.info(f'Detected changes in security scan for {resource_name}')
-                t_trigger = threading.Thread(target=run_triggered, args=(event['object'],), name=f'watch_{resource_name}')
-                t_trigger.start()
-            logger.debug(f'Finished timeout, about to restart watch')
+            # todo - change to debug level
+            logger.info('Starting watch stream')
+            logger.info(f'Resource version: {resource_version}')
+            if resource_version > 0:
+                for event in w.stream(custom_api.list_namespaced_custom_object,
+                                      GROUP, VERSION, '', custom_resource_name, watch=True, timeout_seconds=240, resource_version=resource_version):
+                    resource_version = process_event(event, watched_uids, resource_version)
+            else:
+                for event in w.stream(custom_api.list_namespaced_custom_object,
+                                      GROUP, VERSION, '', custom_resource_name, watch=True, timeout_seconds=240):
+                    resource_version = process_event(event, watched_uids, resource_version)
+            # todo - change:
+            logger.info(f'Watch timed-out')
             w.stop()
+            logger.info(f'running: {threading.enumerate()}')
+            # for tt in trigger_threads:
+            #     logger.info(f'Waiting for {tt}')
+            #     tt.join()
+            #     logger.info(f'Done with {tt}')
+            logger.info('Restarting watch in 5 seconds')
+            time.sleep(5)
+        except exceptions.ProtocolError as pe:
+            # todo - change to debug level
+            logger.info(f'Received: {pe}')
+            logger.info('Will close and reopen watch in 5 seconds')
+            w.stop()
+            time.sleep(5)
+            continue
         except Exception as e:
             logger.warning(f'Error while watching for new {custom_resource_name}: {e}, will retry watch')
             w.stop()
+            time.sleep(5)
+            continue
+
+def process_event(event, watched_uids, recent_version):
+    curr_uid = event['object']['metadata']['uid']
+    event_type = event['type'].lower()
+    resource_name = event['object']['metadata']['labels']['trivy-operator.container.name']
+    if (curr_uid in watched_uids and event_type == 'added') or \
+            (curr_uid not in watched_uids and event_type == 'deleted'):
+        logger.debug(f'Event {event_type} for CRD uid {curr_uid} will be ignored')
+        return recent_version
+    if curr_uid in watched_uids and event_type == 'deleted':
+        logger.debug(f'CRD with uid {curr_uid} deleted, removing uid from watched list')
+        watched_uids.remove(curr_uid)
+        return recent_version
+    if curr_uid not in watched_uids:
+        logger.debug(f'New CRD to watch: {curr_uid}')
+        watched_uids.append(curr_uid)
+    if event_type == 'modified':
+        logger.info(f'Detected changes in security scan for {resource_name}')
+    t_trigger = threading.Thread(target=run_triggered, args=(event['object'],), name=f'watch_{resource_name}')
+    t_trigger.start()
+    current_version = int(event['object']['metadata']['resourceVersion'])
+    latest_version = current_version if current_version > recent_version else recent_version
+    return latest_version
+
+
+def ping():
+    api_client = client.ApiClient()
+    while True:
+        time.sleep(60)
+        try:
+            api_client.ping()
+            logger.info("########### Connection is alive.")
+        except Exception as e:
+            print(f"------------ Error checking connection: {e}")
+            continue
 
 
 if __name__ == '__main__':
