@@ -220,9 +220,8 @@ def watch_crd(custom_resource_name):
     while True:
         try:
             w = watch.Watch()
-            # todo - change to debug level
-            logger.info('Starting watch stream')
-            logger.info(f'Resource version: {resource_version}')
+            logger.info('Watching for new reportss...')
+            logger.debug(f'Latest resource version: {resource_version}')
             if resource_version > 0:
                 for event in w.stream(custom_api.list_namespaced_custom_object,
                                       GROUP, VERSION, '', custom_resource_name, watch=True, timeout_seconds=240, resource_version=resource_version):
@@ -231,18 +230,12 @@ def watch_crd(custom_resource_name):
                 for event in w.stream(custom_api.list_namespaced_custom_object,
                                       GROUP, VERSION, '', custom_resource_name, watch=True, timeout_seconds=240):
                     resource_version = process_event(event, watched_uids, resource_version)
-            # todo - change:
-            logger.info(f'Watch timed-out')
+            logger.debug(f'Watch timed-out')
             w.stop()
-            logger.info(f'running: {threading.enumerate()}')
-            # for tt in trigger_threads:
-            #     logger.info(f'Waiting for {tt}')
-            #     tt.join()
-            #     logger.info(f'Done with {tt}')
-            logger.info('Restarting watch in 5 seconds')
+            logger.debug(f'running: {threading.enumerate()}')
+            logger.debug('Restarting watch in 5 seconds')
             time.sleep(5)
         except exceptions.ProtocolError as pe:
-            # todo - change to debug level
             logger.info(f'Received: {pe}')
             logger.info('Will close and reopen watch in 5 seconds')
             w.stop()
@@ -253,6 +246,7 @@ def watch_crd(custom_resource_name):
             w.stop()
             time.sleep(5)
             continue
+
 
 def process_event(event, watched_uids, recent_version):
     curr_uid = event['object']['metadata']['uid']
@@ -307,5 +301,3 @@ if __name__ == '__main__':
     for t in threads_watch:
         t.join()
     logger.error('Unexpectedly stopped watching. Exiting.')
-
-
