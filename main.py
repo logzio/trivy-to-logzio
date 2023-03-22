@@ -272,18 +272,6 @@ def process_event(event, watched_uids, recent_version):
     return latest_version
 
 
-def ping():
-    api_client = client.ApiClient()
-    while True:
-        time.sleep(60)
-        try:
-            api_client.ping()
-            logger.info("########### Connection is alive.")
-        except Exception as e:
-            print(f"------------ Error checking connection: {e}")
-            continue
-
-
 if __name__ == '__main__':
     logger.info('Starting Trivy-to-Logzio')
 
