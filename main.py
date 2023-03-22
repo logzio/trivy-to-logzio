@@ -3,8 +3,9 @@ import logging
 import os
 import time
 import threading
-from kubernetes import client, config
+from kubernetes import client, config, watch
 import urllib3
+from urllib3 import exceptions
 import schedule
 
 ENV_LOGS_TOKEN = 'LOGZIO_LOG_SHIPPING_TOKEN'
@@ -32,17 +33,13 @@ def get_log_level():
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(threadName)s - %(message)s', level=get_log_level())
 logger = logging.getLogger()
 config.load_incluster_config()
-api_client = client.ApiClient()
-v1_client = client.CoreV1Api()
-api_instance = client.AppsV1Api(api_client)
-custom_api = client.CustomObjectsApi(api_client)
-http = urllib3.PoolManager()
 
 
 def run_logic():
     if not is_valid_input():
         return
     get_reports()
+    logger.info('Done processing')
 
 
 def is_valid_input():
@@ -55,11 +52,9 @@ def is_valid_input():
     return True
 
 
-def get_namespaces():
-    return v1_client.list_namespace().items
-
-
 def get_reports():
+    api_client = client.ApiClient()
+    custom_api = client.CustomObjectsApi(api_client)
     for crd in CRDS:
         crd_list = custom_api.list_namespaced_custom_object(group=GROUP, version=VERSION,
                                                             plural=crd, namespace='')['items']
@@ -74,17 +69,20 @@ def process_item(item):
         related_pods = get_pods_data(metadata['kubernetes'])
         if metadata is not None:
             for pod_data in related_pods:
+                num_vulnerabilities = len(item['report']['vulnerabilities'])
+                num_pools = num_vulnerabilities if num_vulnerabilities > 0 else 1
+                http = urllib3.PoolManager(num_pools=num_pools)
                 for vulnerability in item['report']['vulnerabilities']:
-                    create_and_send_log(metadata, pod_data, vulnerability)
+                    create_and_send_log(metadata, pod_data, http, vulnerability)
                 if len(item['report']['vulnerabilities']) == 0:
                     logger.debug(f'No vulnerabilities for {metadata["kubernetes"]["resource_kind"]}/{metadata["kubernetes"]["resource_name"]}')
-                    create_and_send_log(metadata, pod_data)
+                    create_and_send_log(metadata, pod_data, http)
     except Exception as e:
         logger.debug(f'Item: {item}')
         logger.warning(f'Error while processing item: {e}')
 
 
-def create_and_send_log(metadata, pod_data, vulnerability=None):
+def create_and_send_log(metadata, pod_data, http_client, vulnerability=None):
     log = dict()
     log.update(metadata)
     log['kubernetes'].update(pod_data)
@@ -93,7 +91,7 @@ def create_and_send_log(metadata, pod_data, vulnerability=None):
         log.update(vulnerability)
     else:
         log['message'] = 'No vulnerabilities for this pod at the moment.'
-    send_to_logzio(log)
+    send_to_logzio(log, http_client)
 
 
 def get_logzio_fields():
@@ -126,6 +124,9 @@ def get_report_metadata(item):
 
 def get_pods_data(resource_data):
     try:
+        api_client = client.ApiClient()
+        api_instance = client.AppsV1Api(api_client)
+        v1_client = client.CoreV1Api()
         ns_pods = v1_client.list_namespaced_pod(namespace=resource_data['namespace_name'])
         related_pods = []
         for ns_pod in ns_pods.items:
@@ -155,9 +156,9 @@ def get_pods_data(resource_data):
         return {}
 
 
-def send_to_logzio(log):
+def send_to_logzio(log, http_client):
     max_retries = 5
-    try_num = 0
+    try_num = 1
     data_body = json.dumps(log)
     data_body_bytes = str.encode(data_body)
     url = f'{LOGZIO_LISTENER}?token={LOGZIO_TOKEN}'
@@ -165,7 +166,7 @@ def send_to_logzio(log):
     while try_num <= max_retries:
         try:
             time.sleep(try_num * 2)
-            r = http.request(method='POST', url=url, headers=headers, body=data_body_bytes)
+            r = http_client.request(method='POST', url=url, headers=headers, body=data_body_bytes)
             if r.status == 200:
                 logger.debug(f'Successfully sent log {log} to logzio')
                 return
@@ -175,12 +176,12 @@ def send_to_logzio(log):
             elif r.status == 401:
                 logger.error(f'Invalid token, cannot send to logzio')
                 return
-            logger.warning(f'try {try_num + 1}/{max_retries} failed')
+            logger.warning(f'try {try_num}/{max_retries} failed')
             logger.warning(f'Status code: {r.status}')
             logger.warning(f'Response body: {r.read()}')
             try_num += 1
         except Exception as e:
-            logger.warning(f'Try {try_num + 1}/{max_retries} failed: {e}')
+            logger.warning(f'Try {try_num}/{max_retries} failed: {e}')
             try_num += 1
 
 
@@ -200,34 +201,75 @@ def run_continuously(interval=1):
 
     continuous_thread = ScheduleThread(name='scheduled')
     continuous_thread.start()
-    logger.info(f'Scheduled thread is set to run everyday at: {RUN_SCHEDULE}')
+    logger.info(f'Scheduled thread is set to run everyday at: {RUN_SCHEDULE} (cluster time)')
     return continuous_thread
 
 
-def get_current_resources():
-    resources = v1_client.list_pod_for_all_namespaces(watch=False)
-    owner_names = []
-    for resource in resources.items:
-        name = resource.metadata.owner_references[0].name
-        if name not in owner_names:
-            owner_names.append(name)
-    return owner_names
+def run_triggered(crd_object):
+    logger.info(f'Start processing security scan')
+    logger.debug(crd_object)
+    process_item(crd_object)
+    logger.info(f'Done processing security scan')
 
 
-def wait_for_trivy_scan():
-    timeout = 5
-    scans = 0
-    logger.info('Waiting for Trivy scan to create reports. This may take a few minutes...')
-    resources = get_current_resources()
-    while scans < len(resources):
-        crd_list = custom_api.list_namespaced_custom_object(group=GROUP, version=VERSION,
-                                                            plural='vulnerabilityreports', namespace='')['items']
-        scans = len(crd_list)
-        logger.debug(f'Currently found {scans} scans, and there are at least {len(resources)} resources on the cluster')
-        if scans < len(resources):
-            logger.debug(f'Waiting for trivy...')
-            time.sleep(timeout)
-    logger.info('Done waiting for Trivy scans')
+def watch_crd(custom_resource_name):
+    api_client = client.ApiClient()
+    custom_api = client.CustomObjectsApi(api_client)
+    watched_uids = list()
+    resource_version = 0
+    while True:
+        try:
+            w = watch.Watch()
+            logger.info('Watching for new reportss...')
+            logger.debug(f'Latest resource version: {resource_version}')
+            if resource_version > 0:
+                for event in w.stream(custom_api.list_namespaced_custom_object,
+                                      GROUP, VERSION, '', custom_resource_name, watch=True, timeout_seconds=240, resource_version=resource_version):
+                    resource_version = process_event(event, watched_uids, resource_version)
+            else:
+                for event in w.stream(custom_api.list_namespaced_custom_object,
+                                      GROUP, VERSION, '', custom_resource_name, watch=True, timeout_seconds=240):
+                    resource_version = process_event(event, watched_uids, resource_version)
+            logger.debug(f'Watch timed-out')
+            w.stop()
+            logger.debug(f'running: {threading.enumerate()}')
+            logger.debug('Restarting watch in 5 seconds')
+            time.sleep(5)
+        except exceptions.ProtocolError as pe:
+            logger.info(f'Received: {pe}')
+            logger.info('Will close and reopen watch in 5 seconds')
+            w.stop()
+            time.sleep(5)
+            continue
+        except Exception as e:
+            logger.warning(f'Error while watching for new {custom_resource_name}: {e}, will retry watch')
+            w.stop()
+            time.sleep(5)
+            continue
+
+
+def process_event(event, watched_uids, recent_version):
+    curr_uid = event['object']['metadata']['uid']
+    event_type = event['type'].lower()
+    resource_name = event['object']['metadata']['labels']['trivy-operator.container.name']
+    if (curr_uid in watched_uids and event_type == 'added') or \
+            (curr_uid not in watched_uids and event_type == 'deleted'):
+        logger.debug(f'Event {event_type} for CRD uid {curr_uid} will be ignored')
+        return recent_version
+    if curr_uid in watched_uids and event_type == 'deleted':
+        logger.debug(f'CRD with uid {curr_uid} deleted, removing uid from watched list')
+        watched_uids.remove(curr_uid)
+        return recent_version
+    if curr_uid not in watched_uids:
+        logger.debug(f'New CRD to watch: {curr_uid}')
+        watched_uids.append(curr_uid)
+    if event_type == 'modified':
+        logger.info(f'Detected changes in security scan for {resource_name}')
+    t_trigger = threading.Thread(target=run_triggered, args=(event['object'],), name=f'watch_{resource_name}')
+    t_trigger.start()
+    current_version = int(event['object']['metadata']['resourceVersion'])
+    latest_version = current_version if current_version > recent_version else recent_version
+    return latest_version
 
 
 if __name__ == '__main__':
@@ -237,15 +279,13 @@ if __name__ == '__main__':
     schedule.every().day.at(RUN_SCHEDULE).do(run_logic)
     t_scheduled = run_continuously()
 
-    # wait for trivy to scan
-    t_scan = threading.Thread(target=wait_for_trivy_scan, name='wait-for-scan')
-    t_scan.start()
-    t_scan.join()
-
-    # first run upon deployment
-    t_first = threading.Thread(target=run_logic, name='first-run')
-    t_first.start()
-    t_first.join()
-
-    # waiting for the scheduled thread to finish prevents the script from exiting
-    t_scheduled.join()
+    # event triggered run
+    logger.info('Starting to watch events... ')
+    threads_watch = []
+    for crd in CRDS:
+        t_crd = threading.Thread(target=watch_crd, args=(crd,), name=f'watch_{crd}')
+        threads_watch.append(t_crd)
+        t_crd.start()
+    for t in threads_watch:
+        t.join()
+    logger.error('Unexpectedly stopped watching. Exiting.')
