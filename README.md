@@ -9,6 +9,9 @@ To use it, see Logz.io's [logzio-trivy Helm Chart](https://github.com/logzio/log
 
 ## Changelog:
 
+- **0.2.1**:
+  - Bump base docker image version.
+  - Bump packages in requirements.
 - **0.2.0**:
   - Watch events once the code starts running, along with a daily scheduled scan for reports.
 - **0.1.0**:
