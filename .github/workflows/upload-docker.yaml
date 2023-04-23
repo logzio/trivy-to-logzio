@@ -54,14 +54,11 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION }}
       - name: Build and push version
         uses: docker/build-push-action@v4
-        env:
-          ECR_REPOSITORY: ${{ secrets.REPOSITORY_NAME }}
-          REGISTRY_ALIAS: logzio
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            public.ecr.aws/$REGISTRY_ALIAS/$ECR_REPOSITORY:${{ github.event.release.tag_name }}
-            public.ecr.aws/$REGISTRY_ALIAS/$ECR_REPOSITORY:latest
+            public.ecr.aws/logzio/trivy-to-logzio:${{ github.event.release.tag_name }}
+            public.ecr.aws/logzio/trivy-to-logzio:latest
 
