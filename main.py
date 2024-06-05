@@ -17,6 +17,7 @@ LOGZIO_TOKEN = os.getenv(ENV_LOGS_TOKEN, '')
 LOGZIO_LISTENER = os.getenv(ENV_LOGZIO_LISTENER, 'https://listener.logz.io:8071')
 ENV_ID = os.getenv(ENV_ENV_ID, '')
 RUN_SCHEDULE = os.getenv(ENV_SCHEDULE, '07:00')
+APP_VERSION = os.getenv('APP_VERSION', 'unknown')
 GROUP = 'aquasecurity.github.io'
 VERSION = 'v1alpha1'
 CRDS = ['vulnerabilityreports']
@@ -162,7 +163,10 @@ def send_to_logzio(log, http_client):
     data_body = json.dumps(log)
     data_body_bytes = str.encode(data_body)
     url = f'{LOGZIO_LISTENER}?token={LOGZIO_TOKEN}'
-    headers = {'Content-type': 'application/json'}
+    headers = {
+        'Content-type': 'application/json',
+                'user-agent': f'logzio-trivy-version-{APP_VERSION}-logs'
+    }
     while try_num <= max_retries:
         try:
             time.sleep(try_num * 2)
