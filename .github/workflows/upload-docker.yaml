@@ -52,10 +52,11 @@ jobs:
           password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
-          
-      - name: Print version
-        run: echo "VERSION=${{ github.event.release.tag_name }}"
 
+      - name: Get Version
+        id: get_version
+        run: echo "VERSION=$(python setup.py --version)" >> $GITHUB_ENV
+        
       - name: Build and push version
         uses: docker/build-push-action@v4
         with:
@@ -63,7 +64,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
-            VERSION=${{ github.event.release.tag_name }}
+            VERSION=${{ env.VERSION }}
+}
           tags: |
             public.ecr.aws/logzio/trivy-to-logzio:${{ github.event.release.tag_name }}
             public.ecr.aws/logzio/trivy-to-logzio:latest

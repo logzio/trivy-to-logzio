@@ -7,6 +7,8 @@ COPY main.py .
 COPY __init__.py .
 RUN pip install -r requirements.txt
 
+RUN python setup.py --version > VERSION
+
 # Set environment variable for version
 ARG VERSION
 ENV APP_VERSION=${VERSION}
