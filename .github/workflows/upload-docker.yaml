@@ -52,6 +52,10 @@ jobs:
           password: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         env:
           AWS_REGION: ${{ secrets.AWS_REGION }}
+          
+      - name: Print version
+        run: echo "VERSION=${{ github.event.release.tag_name }}"
+
       - name: Build and push version
         uses: docker/build-push-action@v4
         with:
