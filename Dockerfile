@@ -8,9 +8,8 @@ COPY __init__.py .
 COPY setup.py .
 RUN pip install -r requirements.txt
 
-# Get version from setup.py
-RUN python setup.py --version > VERSION
-ARG VERSION=$(cat VERSION)
+# Extract version from setup.py using Python directly within the Dockerfile
+ARG VERSION
 ENV APP_VERSION=${VERSION}
 
-ENTRYPOINT [ "python","./main.py"]
+ENTRYPOINT [ "python", "./main.py"]
