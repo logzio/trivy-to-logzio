@@ -5,8 +5,8 @@ import time
 import threading
 from kubernetes import client, config, watch
 import urllib3
-from urllib3 import exceptions
 import schedule
+from importlib.metadata import version, PackageNotFoundError
 
 ENV_LOGS_TOKEN = 'LOGZIO_LOG_SHIPPING_TOKEN'
 ENV_LOGZIO_LISTENER = 'LOGZIO_LOG_LISTENER'
@@ -17,11 +17,14 @@ LOGZIO_TOKEN = os.getenv(ENV_LOGS_TOKEN, '')
 LOGZIO_LISTENER = os.getenv(ENV_LOGZIO_LISTENER, 'https://listener.logz.io:8071')
 ENV_ID = os.getenv(ENV_ENV_ID, '')
 RUN_SCHEDULE = os.getenv(ENV_SCHEDULE, '07:00')
-APP_VERSION = os.getenv('APP_VERSION', 'unknown')
+# APP_VERSION = os.getenv('APP_VERSION', 'unknown')
 GROUP = 'aquasecurity.github.io'
 VERSION = 'v1alpha1'
 CRDS = ['vulnerabilityreports']
-
+try:
+    APP_VERSION = version('your-package-name')  # Replace 'your-package-name' with the actual package name
+except PackageNotFoundError:
+    APP_VERSION = 'unknown'
 
 def get_log_level():
     try:

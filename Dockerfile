@@ -9,8 +9,9 @@ RUN pip install -r requirements.txt
 
 RUN python setup.py --version > VERSION
 
-# Set environment variable for version
-ARG VERSION
+# Get version from setup.py
+RUN python setup.py --version > VERSION
+ARG VERSION=$(cat VERSION)
 ENV APP_VERSION=${VERSION}
 
 ENTRYPOINT [ "python","./main.py"]
