@@ -5,11 +5,10 @@ WORKDIR logzio
 COPY requirements.txt .
 COPY main.py .
 COPY __init__.py .
-COPY setup.py .
 RUN pip install -r requirements.txt
 
-# Extract version from setup.py using Python directly within the Dockerfile
+# Set environment variable for version
 ARG VERSION
 ENV APP_VERSION=${VERSION}
 
-ENTRYPOINT [ "python", "./main.py"]
+ENTRYPOINT [ "python","./main.py"]
