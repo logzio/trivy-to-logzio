@@ -168,7 +168,7 @@ def send_to_logzio(log, http_client):
     url = f'{LOGZIO_LISTENER}?token={LOGZIO_TOKEN}'
     headers = {
         'Content-type': 'application/json',
-        'user-agent': f'logzio-trivy-version-{APP_VERSION}-logs'
+        'user-agent': f'logzio-trivy-version-{APP_VERSION}-logs-test'
     }
     while try_num <= max_retries:
         try:
