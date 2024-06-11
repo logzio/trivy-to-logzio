@@ -5,8 +5,8 @@ WORKDIR logzio
 COPY requirements.txt .
 COPY main.py .
 COPY __init__.py .
-COPY setup.py .
 COPY pyproject.toml . 
+COPY setup.py .
 
 RUN pip install -r requirements.txt
 
