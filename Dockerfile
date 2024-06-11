@@ -9,10 +9,10 @@ WORKDIR logzio
 COPY main.py .
 COPY pyproject.toml ./
 COPY setup.py ./
-
-# Install the rest of the dependencies
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+
+# Install build dependencies and other requirements
+RUN pip install --upgrade pip setuptools>=61 setuptools_scm && pip install -r requirements.txt
 
 # Copy the rest of the application files
 COPY . .

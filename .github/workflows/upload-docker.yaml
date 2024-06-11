@@ -52,7 +52,8 @@ jobs:
           AWS_REGION: ${{ secrets.AWS_REGION }}
       - name: Get Version
         id: get_version
-        run: echo "VERSION=$(python setup.py --version)" >> $GITHUB_ENV
+        run: echo "VERSION=$(python -c \"import setuptools_scm; print(setuptools_scm.get_version())\")" >> $GITHUB_ENV
+        
       - name: Build and push version
         uses: docker/build-push-action@v4
         with:
