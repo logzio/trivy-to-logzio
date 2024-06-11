@@ -12,7 +12,7 @@ COPY setup.py ./
 COPY requirements.txt .
 
 # Install build dependencies and other requirements
-RUN pip install --upgrade pip setuptools>=61 setuptools_scm && pip install -r requirements.txt
+RUN pip install --upgrade pip setuptools>=68 setuptools_scm && pip install -r requirements.txt
 
 # Copy the rest of the application files
 COPY . .
