@@ -1,5 +1,8 @@
 FROM python:3.12.0a7-slim
 
+# Install git
+RUN apt-get update && apt-get install -y git
+
 RUN mkdir logzio
 WORKDIR logzio
 
