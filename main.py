@@ -18,13 +18,14 @@ LOGZIO_LISTENER = os.getenv(ENV_LOGZIO_LISTENER, 'https://listener.logz.io:8071'
 ENV_ID = os.getenv(ENV_ENV_ID, '')
 RUN_SCHEDULE = os.getenv(ENV_SCHEDULE, '07:00')
 # APP_VERSION = os.getenv('APP_VERSION', 'unknown')
+PACKAGE_NAME = "logzio-trivy"
+APP_VERSION = version(PACKAGE_NAME)  
+SHIPPER_HEADER = {"user-agent": f"{PACKAGE_NAME}-version-{APP_VERSION}-logs"}
 GROUP = 'aquasecurity.github.io'
 VERSION = 'v1alpha1'
 CRDS = ['vulnerabilityreports']
-try:
-    APP_VERSION = version('your-package-name')  # Replace 'your-package-name' with the actual package name
-except PackageNotFoundError:
-    APP_VERSION = 'unknown'
+
+
 
 def get_log_level():
     try:
@@ -166,10 +167,7 @@ def send_to_logzio(log, http_client):
     data_body = json.dumps(log)
     data_body_bytes = str.encode(data_body)
     url = f'{LOGZIO_LISTENER}?token={LOGZIO_TOKEN}'
-    headers = {
-        'Content-type': 'application/json',
-        'user-agent': f'logzio-trivy-version-{APP_VERSION}-logs-test'
-    }
+    headers = {'Content-type': 'application/json', **SHIPPER_HEADER}
     while try_num <= max_retries:
         try:
             time.sleep(try_num * 2)
