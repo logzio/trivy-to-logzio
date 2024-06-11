@@ -10,9 +10,6 @@ COPY main.py .
 COPY pyproject.toml ./
 COPY setup.py ./
 
-# Install necessary dependencies for setuptools_scm
-RUN pip install setuptools setuptools_scm
-
 # Install the rest of the dependencies
 COPY requirements.txt .
 RUN pip install -r requirements.txt
