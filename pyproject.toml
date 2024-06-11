@@ -1,8 +1,6 @@
 [build-system]
-requires = ["setuptools>=42", "setuptools_scm[toml]>=6.0.1"]
+requires = ["setuptools>=61", "setuptools_scm"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
-version_scheme = "guess-next-dev"
-local_scheme = "node-and-date"
-write_to = "logzio/_version.py"
+write_to = "VERSION"
