@@ -58,4 +58,3 @@ jobs:
             VERSION=${{ env.VERSION }}
           tags: |
             ${{ matrix.registry == 'docker' && 'logzio/trivy-to-logzio' || 'public.ecr.aws/logzio/trivy-to-logzio' }}:${{ github.event.release.tag_name }}
-            ${{ matrix.registry == 'docker' && 'logzio/trivy-to-logzio' || 'public.ecr.aws/logzio/trivy-to-logzio' }}:latest
