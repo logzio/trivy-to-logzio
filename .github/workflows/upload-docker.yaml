@@ -47,6 +47,7 @@ jobs:
         id: get_version
         run: |
           echo "VERSION=$(python -c 'import setuptools_scm; print(setuptools_scm.get_version())')" >> $GITHUB_ENV
+          echo "VERSION: ${{ env.VERSION }}"
 
       - name: Build and push version
         uses: docker/build-push-action@v4
@@ -58,3 +59,4 @@ jobs:
             VERSION=${{ env.VERSION }}
           tags: |
             ${{ matrix.registry == 'docker' && 'logzio/trivy-to-logzio' || 'public.ecr.aws/logzio/trivy-to-logzio' }}:${{ github.event.release.tag_name }}
+            ${{ matrix.registry == 'docker' && 'logzio/trivy-to-logzio' || 'public.ecr.aws/logzio/trivy-to-logzio' }}:test
