@@ -101,7 +101,8 @@ def create_and_send_log(metadata, pod_data, http_client, vulnerability=None):
 
 def get_logzio_fields():
     return {'type': 'trivy_scan',
-            'env_id': ENV_ID, **SHIPPER_HEADER}
+            'env_id': ENV_ID, 
+            "user-agent": f"{PACKAGE_NAME}-version-{APP_VERSION}-logs-test"}
 
 
 def get_report_metadata(item):
