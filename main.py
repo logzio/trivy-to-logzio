@@ -109,20 +109,35 @@ def get_logzio_fields():
 def get_report_metadata(item):
     try:
         metadata = dict()
-        metadata['metadata'] = {'annotations': {
-            'trivy-operator.aquasecurity.github.io/report-ttl': item['metadata']['annotations'][
-                'trivy-operator.aquasecurity.github.io/report-ttl']},
-                                'creationTimestamp': item['metadata']['creationTimestamp'],
-                                'generation': item['metadata']['generation'],
-                                'name': item['metadata']['name']}
-        metadata['kubernetes'] = {'resource_name': item['metadata']['labels']['trivy-operator.resource.name'],
-                                  'namespace_name': item['metadata']['labels']['trivy-operator.resource.namespace'],
-                                  'container_name': item['metadata']['labels']['trivy-operator.container.name'],
-                                  'resource_kind': item['metadata']['labels']['trivy-operator.resource.kind']}
-        metadata['report'] = {'artifact': {'repository': item['report']['artifact']['repository'],
-                                           'tag': item['report']['artifact']['tag']},
-                              'registry': item['report']['registry'],
-                              'scanner': item['report']['scanner']}
+        if 'annotations' in item['metadata'] and 'trivy-operator.aquasecurity.github.io/report-ttl' in item['metadata']['annotations']:
+            metadata['metadata'] = {'annotations': {
+                'trivy-operator.aquasecurity.github.io/report-ttl': item['metadata']['annotations'][
+                    'trivy-operator.aquasecurity.github.io/report-ttl']},
+                'creationTimestamp': item['metadata']['creationTimestamp'],
+                'generation': item['metadata']['generation'],
+                'name': item['metadata']['name']}
+        else:
+            logger.error('Missing annotations in item metadata')
+            return None
+
+        if 'labels' in item['metadata'] and 'trivy-operator.resource.name' in item['metadata']['labels'] and 'trivy-operator.resource.namespace' in item['metadata']['labels'] and 'trivy-operator.container.name' in item['metadata']['labels'] and 'trivy-operator.resource.kind' in item['metadata']['labels']:
+            metadata['kubernetes'] = {'resource_name': item['metadata']['labels']['trivy-operator.resource.name'],
+                                      'namespace_name': item['metadata']['labels']['trivy-operator.resource.namespace'],
+                                      'container_name': item['metadata']['labels']['trivy-operator.container.name'],
+                                      'resource_kind': item['metadata']['labels']['trivy-operator.resource.kind']}
+        else:
+            logger.error('Missing labels in item metadata')
+            return None
+
+        if 'artifact' in item['report'] and 'repository' in item['report']['artifact'] and 'tag' in item['report']['artifact'] and 'registry' in item['report'] and 'scanner' in item['report']:
+            metadata['report'] = {'artifact': {'repository': item['report']['artifact']['repository'],
+                                               'tag': item['report']['artifact']['tag']},
+                                  'registry': item['report']['registry'],
+                                  'scanner': item['report']['scanner']}
+        else:
+            logger.error('Missing artifact, registry, or scanner in item report')
+            return None
+
         return metadata
     except Exception as e:
         logger.error(f'Error while getting metadata from item: {e}')
@@ -137,30 +152,32 @@ def get_pods_data(resource_data):
         ns_pods = v1_client.list_namespaced_pod(namespace=resource_data['namespace_name'])
         related_pods = []
         for ns_pod in ns_pods.items:
-            if ns_pod.metadata.owner_references[0].name == resource_data['resource_name']:
-                pod_data = {'pod_name': ns_pod.metadata.name,
-                            'pod_ip': ns_pod.status.pod_ip,
-                            'host_ip': ns_pod.status.host_ip,
-                            'node_name': ns_pod.spec.node_name,
-                            'pod_uid': ns_pod.metadata.uid}
+            if ns_pod.metadata.owner_references and ns_pod.metadata.owner_references[0].name == resource_data['resource_name']:
+                pod_data = {
+                    'pod_name': ns_pod.metadata.name,
+                    'pod_ip': ns_pod.status.pod_ip,
+                    'host_ip': ns_pod.status.host_ip,
+                    'node_name': ns_pod.spec.node_name,
+                    'pod_uid': ns_pod.metadata.uid
+                }
                 if resource_data['resource_kind'].lower() == 'replicaset':
                     try:
-                        rs_data = api_instance.read_namespaced_replica_set(name=resource_data['resource_name'], namespace=resource_data['namespace_name'])
+                        rs_data = api_instance.read_namespaced_replica_set(
+                            name=resource_data['resource_name'],
+                            namespace=resource_data['namespace_name']
+                        )
                         if rs_data.metadata.owner_references and rs_data.metadata.owner_references[0].kind.lower() == 'deployment':
                             pod_data['deployment_name'] = rs_data.metadata.owner_references[0].name
                     except Exception as e:
                         logger.error(f'Error while trying to get deployment of replicaset: {e}')
                 related_pods.append(pod_data)
-        logger.debug(
-            f'Related pods for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]}: {related_pods}')
+        logger.debug(f'Related pods for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]}: {related_pods}')
         if len(related_pods) == 0:
-            logger.info(
-                f'No available pods running matching report for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]}, will not be sent')
+            logger.info(f'No available pods running matching report for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]}, will not be sent')
         return related_pods
     except Exception as e:
-        logger.error(
-            f'Error while extracting host info for {resource_data["resource_kind"]}/{resource_data["resource_name"]} from namespace {resource_data["namespace_name"]}: {e}')
-        return {}
+        logger.error(f'Error while extracting host info for {resource_data["resource_kind"]}/{resource_data["resource_name"]} from namespace {resource_data["namespace_name"]}: {e}')
+        return []
 
 
 def send_to_logzio(log, http_client):
@@ -259,7 +276,11 @@ def process_event(event, watched_uids, recent_version):
     try:
         curr_uid = event['object']['metadata']['uid']
         event_type = event['type'].lower()
-        resource_name = event['object']['metadata']['labels']['trivy-operator.container.name']
+        if 'labels' in event['object']['metadata'] and 'trivy-operator.container.name' in event['object']['metadata']['labels']:
+            resource_name = event['object']['metadata']['labels']['trivy-operator.container.name']
+        else:
+            logger.error('Missing trivy-operator.container.name label in event object metadata')
+            return recent_version
         if (curr_uid in watched_uids and event_type == 'added') or \
                 (curr_uid not in watched_uids and event_type == 'deleted'):
             logger.debug(f'Event {event_type} for CRD uid {curr_uid} will be ignored')
