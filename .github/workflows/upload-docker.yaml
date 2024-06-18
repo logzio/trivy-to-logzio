@@ -46,8 +46,12 @@ jobs:
       - name: Get Version
         id: get_version
         run: |
-          echo "VERSION=$(python -c 'import setuptools_scm; print(setuptools_scm.get_version())')" >> $GITHUB_ENV
-          echo "VERSION: ${{ env.VERSION }}"
+          VERSION=$(python -c 'import setuptools_scm; print(setuptools_scm.get_version())')
+          echo "VERSION=${VERSION}"
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+
+      - name: Debug Version
+        run: echo "Debug VERSION=${{ env.VERSION }}"
 
       - name: Build and push version
         uses: docker/build-push-action@v4
