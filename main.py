@@ -146,7 +146,7 @@ def get_pods_data(resource_data):
                 if resource_data['resource_kind'].lower() == 'replicaset':
                     try:
                         rs_data = api_instance.read_namespaced_replica_set(name=resource_data['resource_name'], namespace=resource_data['namespace_name'])
-                        if rs_data.metadata.owner_references[0].kind.lower() == 'deployment':
+                        if rs_data.metadata.owner_references and rs_data.metadata.owner_references[0].kind.lower() == 'deployment':
                             pod_data['deployment_name'] = rs_data.metadata.owner_references[0].name
                     except Exception as e:
                         logger.error(f'Error while trying to get deployment of replicaset: {e}')
@@ -256,27 +256,35 @@ def watch_crd(custom_resource_name):
 
 
 def process_event(event, watched_uids, recent_version):
-    curr_uid = event['object']['metadata']['uid']
-    event_type = event['type'].lower()
-    resource_name = event['object']['metadata']['labels']['trivy-operator.container.name']
-    if (curr_uid in watched_uids and event_type == 'added') or \
-            (curr_uid not in watched_uids and event_type == 'deleted'):
-        logger.debug(f'Event {event_type} for CRD uid {curr_uid} will be ignored')
-        return recent_version
-    if curr_uid in watched_uids and event_type == 'deleted':
-        logger.debug(f'CRD with uid {curr_uid} deleted, removing uid from watched list')
-        watched_uids.remove(curr_uid)
-        return recent_version
-    if curr_uid not in watched_uids:
-        logger.debug(f'New CRD to watch: {curr_uid}')
-        watched_uids.append(curr_uid)
-    if event_type == 'modified':
-        logger.info(f'Detected changes in security scan for {resource_name}')
-    t_trigger = threading.Thread(target=run_triggered, args=(event['object'],), name=f'watch_{resource_name}')
-    t_trigger.start()
-    current_version = int(event['object']['metadata']['resourceVersion'])
-    latest_version = current_version if current_version > recent_version else recent_version
-    return latest_version
+    try:
+        curr_uid = event['object']['metadata']['uid']
+        event_type = event['type'].lower()
+        resource_name = event['object']['metadata']['labels']['trivy-operator.container.name']
+        if (curr_uid in watched_uids and event_type == 'added') or \
+                (curr_uid not in watched_uids and event_type == 'deleted'):
+            logger.debug(f'Event {event_type} for CRD uid {curr_uid} will be ignored')
+            return recent_version
+        if curr_uid in watched_uids and event_type == 'deleted':
+            logger.debug(f'CRD with uid {curr_uid} deleted, removing uid from watched list')
+            watched_uids.remove(curr_uid)
+            return recent_version
+        if curr_uid not in watched_uids:
+            logger.debug(f'New CRD to watch: {curr_uid}')
+            watched_uids.append(curr_uid)
+        if event_type == 'modified':
+            logger.info(f'Detected changes in security scan for {resource_name}')
+        t_trigger = threading.Thread(target=run_triggered, args=(event['object'],), name=f'watch_{resource_name}')
+        t_trigger.start()
+        current_version = int(event['object']['metadata']['resourceVersion'])
+        latest_version = current_version if current_version > recent_version else recent_version
+        return latest_version
+    except KeyError as ke:
+        logger.error(f'KeyError: Missing key in event object: {ke}')
+    except TypeError as te:
+        logger.error(f'TypeError: {te}')
+    except Exception as e:
+        logger.error(f'Unexpected error: {e}')
+    return recent_version
 
 
 if __name__ == '__main__':
