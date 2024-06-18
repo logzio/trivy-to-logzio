@@ -96,6 +96,7 @@ def create_and_send_log(metadata, pod_data, http_client, vulnerability=None):
         log.update(vulnerability)
     else:
         log['message'] = 'No vulnerabilities for this pod at the moment.'
+    logger.info(f"Attemptimg to send this log:\n{log}")
     send_to_logzio(log, http_client)
 
 
