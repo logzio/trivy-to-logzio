@@ -41,7 +41,6 @@ jobs:
             VERSION=${{ env.VERSION }}
           tags: |
             logzio/trivy-to-logzio:${{ env.VERSION }}
-            logzio/trivy-to-logzio:latest
 
   ecr-public:
     runs-on: ubuntu-latest
@@ -82,4 +81,3 @@ jobs:
             VERSION=${{ env.VERSION }}
           tags: |
             public.ecr.aws/logzio/trivy-to-logzio:${{ env.VERSION }}
-            public.ecr.aws/logzio/trivy-to-logzio:latest
