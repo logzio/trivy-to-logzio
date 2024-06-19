@@ -96,7 +96,10 @@ def create_and_send_log(metadata, pod_data, http_client, vulnerability=None):
         log.update(vulnerability)
     else:
         log['message'] = 'No vulnerabilities for this pod at the moment.'
-    logger.info(f"Attemptimg to send this log:\n{log}")
+
+    # Debug log for the complete log content
+    logger.info(f"Attempting to send this log:\n{json.dumps(log, indent=2)}")
+
     send_to_logzio(log, http_client)
 
 
@@ -170,16 +173,21 @@ def get_pods_data(resource_data):
                     except Exception as e:
                         logger.error(f'Error while trying to get deployment of replicaset: {e}')
                 related_pods.append(pod_data)
-        logger.debug(
-            f'Related pods for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]}: {related_pods}')
+            else:
+                logger.warning(f"No owner references or resource name mismatch for pod {ns_pod.metadata.name} in namespace {resource_data['namespace_name']}")
+
+        logger.debug(f'Related pods for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]}: {related_pods}')
         if len(related_pods) == 0:
-            logger.info(
-                f'No available pods running matching report for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]}, will not be sent')
+            logger.info(f'No available pods running matching report for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]}, will not be sent')
         return related_pods
+
+    except KeyError as ke:
+        logger.error(f'KeyError: Missing key in resource_data: {ke}')
+    except TypeError as te:
+        logger.error(f'TypeError: {te}')
     except Exception as e:
-        logger.error(
-            f'Error while extracting host info for {resource_data["resource_kind"]}/{resource_data["resource_name"]} from namespace {resource_data["namespace_name"]}: {e}')
-        return []
+        logger.error(f'Error while extracting host info for {resource_data["resource_kind"]}/{resource_data["resource_name"]} from namespace {resource_data["namespace_name"]}: {e}')
+    return []
 
 
 def send_to_logzio(log, http_client):
