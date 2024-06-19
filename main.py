@@ -5,8 +5,8 @@ import time
 import threading
 from kubernetes import client, config, watch
 import urllib3
-from urllib3 import exceptions
 import schedule
+from importlib.metadata import version, PackageNotFoundError
 
 ENV_LOGS_TOKEN = 'LOGZIO_LOG_SHIPPING_TOKEN'
 ENV_LOGZIO_LISTENER = 'LOGZIO_LOG_LISTENER'
@@ -17,9 +17,14 @@ LOGZIO_TOKEN = os.getenv(ENV_LOGS_TOKEN, '')
 LOGZIO_LISTENER = os.getenv(ENV_LOGZIO_LISTENER, 'https://listener.logz.io:8071')
 ENV_ID = os.getenv(ENV_ENV_ID, '')
 RUN_SCHEDULE = os.getenv(ENV_SCHEDULE, '07:00')
+# APP_VERSION = os.getenv('APP_VERSION', 'unknown')
+PACKAGE_NAME = "trivy-to-logzio"
+APP_VERSION = version(PACKAGE_NAME)  
+SHIPPER_HEADER = {"user-agent": f"{PACKAGE_NAME}-version-{APP_VERSION}-logs-test"}
 GROUP = 'aquasecurity.github.io'
 VERSION = 'v1alpha1'
 CRDS = ['vulnerabilityreports']
+
 
 
 def get_log_level():
@@ -91,31 +96,51 @@ def create_and_send_log(metadata, pod_data, http_client, vulnerability=None):
         log.update(vulnerability)
     else:
         log['message'] = 'No vulnerabilities for this pod at the moment.'
+
+    # Debug log for the complete log content
+    logger.info(f"Attempting to send this log:\n{json.dumps(log, indent=2)}")
+
     send_to_logzio(log, http_client)
 
 
 def get_logzio_fields():
     return {'type': 'trivy_scan',
-            'env_id': ENV_ID}
+            'env_id': 'Bar_test_1353', 
+            **SHIPPER_HEADER}
 
 
 def get_report_metadata(item):
     try:
         metadata = dict()
-        metadata['metadata'] = {'annotations': {
-            'trivy-operator.aquasecurity.github.io/report-ttl': item['metadata']['annotations'][
-                'trivy-operator.aquasecurity.github.io/report-ttl']},
-                                'creationTimestamp': item['metadata']['creationTimestamp'],
-                                'generation': item['metadata']['generation'],
-                                'name': item['metadata']['name']}
-        metadata['kubernetes'] = {'resource_name': item['metadata']['labels']['trivy-operator.resource.name'],
-                                  'namespace_name': item['metadata']['labels']['trivy-operator.resource.namespace'],
-                                  'container_name': item['metadata']['labels']['trivy-operator.container.name'],
-                                  'resource_kind': item['metadata']['labels']['trivy-operator.resource.kind']}
-        metadata['report'] = {'artifact': {'repository': item['report']['artifact']['repository'],
-                                           'tag': item['report']['artifact']['tag']},
-                              'registry': item['report']['registry'],
-                              'scanner': item['report']['scanner']}
+        annotations = item['metadata'].get('annotations', {})
+        labels = item['metadata'].get('labels', {})
+        report = item.get('report', {})
+
+        metadata['metadata'] = {
+            'annotations': {
+                'trivy-operator.aquasecurity.github.io/report-ttl': annotations.get('trivy-operator.aquasecurity.github.io/report-ttl', '')
+            },
+            'creationTimestamp': item['metadata'].get('creationTimestamp', ''),
+            'generation': item['metadata'].get('generation', 0),
+            'name': item['metadata'].get('name', '')
+        }
+
+        metadata['kubernetes'] = {
+            'resource_name': labels.get('trivy-operator.resource.name', ''),
+            'namespace_name': labels.get('trivy-operator.resource.namespace', ''),
+            'container_name': labels.get('trivy-operator.container.name', ''),
+            'resource_kind': labels.get('trivy-operator.resource.kind', '')
+        }
+
+        metadata['report'] = {
+            'artifact': {
+                'repository': report.get('artifact', {}).get('repository', ''),
+                'tag': report.get('artifact', {}).get('tag', '')
+            },
+            'registry': report.get('registry', ''),
+            'scanner': report.get('scanner', '')
+        }
+
         return metadata
     except Exception as e:
         logger.error(f'Error while getting metadata from item: {e}')
@@ -129,31 +154,41 @@ def get_pods_data(resource_data):
         v1_client = client.CoreV1Api()
         ns_pods = v1_client.list_namespaced_pod(namespace=resource_data['namespace_name'])
         related_pods = []
+
         for ns_pod in ns_pods.items:
-            if ns_pod.metadata.owner_references[0].name == resource_data['resource_name']:
-                pod_data = {'pod_name': ns_pod.metadata.name,
-                            'pod_ip': ns_pod.status.pod_ip,
-                            'host_ip': ns_pod.status.host_ip,
-                            'node_name': ns_pod.spec.node_name,
-                            'pod_uid': ns_pod.metadata.uid}
+            if ns_pod.metadata.owner_references and ns_pod.metadata.owner_references[0].name == resource_data['resource_name']:
+                pod_data = {
+                    'pod_name': ns_pod.metadata.name,
+                    'pod_ip': ns_pod.status.pod_ip,
+                    'host_ip': ns_pod.status.host_ip,
+                    'node_name': ns_pod.spec.node_name,
+                    'pod_uid': ns_pod.metadata.uid
+                }
                 if resource_data['resource_kind'].lower() == 'replicaset':
                     try:
-                        rs_data = api_instance.read_namespaced_replica_set(name=resource_data['resource_name'], namespace=resource_data['namespace_name'])
-                        if rs_data.metadata.owner_references[0].kind.lower() == 'deployment':
+                        rs_data = api_instance.read_namespaced_replica_set(
+                            name=resource_data['resource_name'], namespace=resource_data['namespace_name']
+                        )
+                        if rs_data.metadata.owner_references and rs_data.metadata.owner_references[0].kind.lower() == 'deployment':
                             pod_data['deployment_name'] = rs_data.metadata.owner_references[0].name
                     except Exception as e:
                         logger.error(f'Error while trying to get deployment of replicaset: {e}')
                 related_pods.append(pod_data)
-        logger.debug(
-            f'Related pods for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]}: {related_pods}')
+            else:
+                logger.warning(f"No owner references or resource name mismatch for pod {ns_pod.metadata.name} in namespace {resource_data['namespace_name']}")
+
+        logger.debug(f'Related pods for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]}: {related_pods}')
         if len(related_pods) == 0:
-            logger.info(
-                f'No available pods running matching report for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]}, will not be sent')
+            logger.info(f'No available pods running matching report for {resource_data["resource_kind"]}/{resource_data["resource_name"]} in ns {resource_data["namespace_name"]}, will not be sent')
         return related_pods
+
+    except KeyError as ke:
+        logger.error(f'KeyError: Missing key in resource_data: {ke}')
+    except TypeError as te:
+        logger.error(f'TypeError: {te}')
     except Exception as e:
-        logger.error(
-            f'Error while extracting host info for {resource_data["resource_kind"]}/{resource_data["resource_name"]} from namespace {resource_data["namespace_name"]}: {e}')
-        return {}
+        logger.error(f'Error while extracting host info for {resource_data["resource_kind"]}/{resource_data["resource_name"]} from namespace {resource_data["namespace_name"]}: {e}')
+    return []
 
 
 def send_to_logzio(log, http_client):
@@ -162,7 +197,7 @@ def send_to_logzio(log, http_client):
     data_body = json.dumps(log)
     data_body_bytes = str.encode(data_body)
     url = f'{LOGZIO_LISTENER}?token={LOGZIO_TOKEN}'
-    headers = {'Content-type': 'application/json'}
+    headers = {'Content-type': 'application/json', **SHIPPER_HEADER}
     while try_num <= max_retries:
         try:
             time.sleep(try_num * 2)
@@ -249,27 +284,40 @@ def watch_crd(custom_resource_name):
 
 
 def process_event(event, watched_uids, recent_version):
-    curr_uid = event['object']['metadata']['uid']
-    event_type = event['type'].lower()
-    resource_name = event['object']['metadata']['labels']['trivy-operator.container.name']
-    if (curr_uid in watched_uids and event_type == 'added') or \
-            (curr_uid not in watched_uids and event_type == 'deleted'):
-        logger.debug(f'Event {event_type} for CRD uid {curr_uid} will be ignored')
-        return recent_version
-    if curr_uid in watched_uids and event_type == 'deleted':
-        logger.debug(f'CRD with uid {curr_uid} deleted, removing uid from watched list')
-        watched_uids.remove(curr_uid)
-        return recent_version
-    if curr_uid not in watched_uids:
-        logger.debug(f'New CRD to watch: {curr_uid}')
-        watched_uids.append(curr_uid)
-    if event_type == 'modified':
-        logger.info(f'Detected changes in security scan for {resource_name}')
-    t_trigger = threading.Thread(target=run_triggered, args=(event['object'],), name=f'watch_{resource_name}')
-    t_trigger.start()
-    current_version = int(event['object']['metadata']['resourceVersion'])
-    latest_version = current_version if current_version > recent_version else recent_version
-    return latest_version
+    try:
+        curr_uid = event['object']['metadata']['uid']
+        event_type = event['type'].lower()
+        if 'labels' in event['object']['metadata'] and 'trivy-operator.container.name' in event['object']['metadata']['labels']:
+            resource_name = event['object']['metadata']['labels']['trivy-operator.container.name']
+        else:
+            logger.error('Missing trivy-operator.container.name label in event object metadata')
+            return recent_version
+        if (curr_uid in watched_uids and event_type == 'added') or \
+                (curr_uid not in watched_uids and event_type == 'deleted'):
+            logger.debug(f'Event {event_type} for CRD uid {curr_uid} will be ignored')
+            return recent_version
+        if curr_uid in watched_uids and event_type == 'deleted':
+            logger.debug(f'CRD with uid {curr_uid} deleted, removing uid from watched list')
+            watched_uids.remove(curr_uid)
+            return recent_version
+        if curr_uid not in watched_uids:
+            logger.debug(f'New CRD to watch: {curr_uid}')
+            watched_uids.append(curr_uid)
+        if event_type == 'modified':
+            logger.info(f'Detected changes in security scan for {resource_name}')
+        t_trigger = threading.Thread(target=run_triggered, args=(event['object'],), name=f'watch_{resource_name}')
+        t_trigger.start()
+        current_version = int(event['object']['metadata']['resourceVersion'])
+        latest_version = current_version if current_version > recent_version else recent_version
+        return latest_version
+    except KeyError as ke:
+        logger.error(f'KeyError: Missing key in event object: {ke}')
+    except TypeError as te:
+        logger.error(f'TypeError: {te}')
+    except Exception as e:
+        logger.error(f'Unexpected error: {e}')
+    return recent_version
+
 
 
 if __name__ == '__main__':
