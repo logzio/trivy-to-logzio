@@ -11,15 +11,15 @@ from importlib.metadata import version, PackageNotFoundError
 ENV_LOGS_TOKEN = 'LOGZIO_LOG_SHIPPING_TOKEN'
 ENV_LOGZIO_LISTENER = 'LOGZIO_LOG_LISTENER'
 ENV_ENV_ID = 'ENV_ID'
-ENV_LOG_LEVEL = 'DEBUG'
+ENV_LOG_LEVEL = 'LOG_LEVEL'
 ENV_SCHEDULE = 'SCHEDULE'
 LOGZIO_TOKEN = os.getenv(ENV_LOGS_TOKEN, '')
 LOGZIO_LISTENER = os.getenv(ENV_LOGZIO_LISTENER, 'https://listener.logz.io:8071')
 ENV_ID = os.getenv(ENV_ENV_ID, '')
 RUN_SCHEDULE = os.getenv(ENV_SCHEDULE, '07:00')
-APP_VERSION = os.getenv('APP_VERSION', 'unknown')
+# APP_VERSION = os.getenv('APP_VERSION', 'unknown')
 PACKAGE_NAME = "trivy-to-logzio"
-# APP_VERSION = version(PACKAGE_NAME)  
+APP_VERSION = version(PACKAGE_NAME)  
 SHIPPER_HEADER = {"user-agent": f"{PACKAGE_NAME}-version-{APP_VERSION}-logs-test"}
 GROUP = 'aquasecurity.github.io'
 VERSION = 'v1alpha1'
@@ -104,9 +104,9 @@ def create_and_send_log(metadata, pod_data, http_client, vulnerability=None):
 
 
 def get_logzio_fields():
-    return {'type': 'trivy_scan_test',
-            'env_id': "Bar_test_1321", 
-            "user-agent": f"{PACKAGE_NAME}-version-{APP_VERSION}-logs-test"}
+    return {'type': 'trivy_scan',
+            'env_id': 'Bar_test_1353', 
+            **SHIPPER_HEADER}
 
 
 def get_report_metadata(item):
