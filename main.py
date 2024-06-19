@@ -11,7 +11,7 @@ from importlib.metadata import version, PackageNotFoundError
 ENV_LOGS_TOKEN = 'LOGZIO_LOG_SHIPPING_TOKEN'
 ENV_LOGZIO_LISTENER = 'LOGZIO_LOG_LISTENER'
 ENV_ENV_ID = 'ENV_ID'
-ENV_LOG_LEVEL = 'INFO'
+ENV_LOG_LEVEL = 'DEBUG'
 ENV_SCHEDULE = 'SCHEDULE'
 LOGZIO_TOKEN = os.getenv(ENV_LOGS_TOKEN, '')
 LOGZIO_LISTENER = os.getenv(ENV_LOGZIO_LISTENER, 'https://listener.logz.io:8071')
@@ -112,34 +112,34 @@ def get_logzio_fields():
 def get_report_metadata(item):
     try:
         metadata = dict()
-        if 'annotations' in item['metadata'] and 'trivy-operator.aquasecurity.github.io/report-ttl' in item['metadata']['annotations']:
-            metadata['metadata'] = {'annotations': {
-                'trivy-operator.aquasecurity.github.io/report-ttl': item['metadata']['annotations'][
-                    'trivy-operator.aquasecurity.github.io/report-ttl']},
-                'creationTimestamp': item['metadata']['creationTimestamp'],
-                'generation': item['metadata']['generation'],
-                'name': item['metadata']['name']}
-        else:
-            logger.error('Missing annotations in item metadata')
-            return None
+        annotations = item['metadata'].get('annotations', {})
+        labels = item['metadata'].get('labels', {})
+        report = item.get('report', {})
 
-        if 'labels' in item['metadata'] and 'trivy-operator.resource.name' in item['metadata']['labels'] and 'trivy-operator.resource.namespace' in item['metadata']['labels'] and 'trivy-operator.container.name' in item['metadata']['labels'] and 'trivy-operator.resource.kind' in item['metadata']['labels']:
-            metadata['kubernetes'] = {'resource_name': item['metadata']['labels']['trivy-operator.resource.name'],
-                                      'namespace_name': item['metadata']['labels']['trivy-operator.resource.namespace'],
-                                      'container_name': item['metadata']['labels']['trivy-operator.container.name'],
-                                      'resource_kind': item['metadata']['labels']['trivy-operator.resource.kind']}
-        else:
-            logger.error('Missing labels in item metadata')
-            return None
+        metadata['metadata'] = {
+            'annotations': {
+                'trivy-operator.aquasecurity.github.io/report-ttl': annotations.get('trivy-operator.aquasecurity.github.io/report-ttl', '')
+            },
+            'creationTimestamp': item['metadata'].get('creationTimestamp', ''),
+            'generation': item['metadata'].get('generation', 0),
+            'name': item['metadata'].get('name', '')
+        }
 
-        if 'artifact' in item['report'] and 'repository' in item['report']['artifact'] and 'tag' in item['report']['artifact'] and 'registry' in item['report'] and 'scanner' in item['report']:
-            metadata['report'] = {'artifact': {'repository': item['report']['artifact']['repository'],
-                                               'tag': item['report']['artifact']['tag']},
-                                  'registry': item['report']['registry'],
-                                  'scanner': item['report']['scanner']}
-        else:
-            logger.error('Missing artifact, registry, or scanner in item report')
-            return None
+        metadata['kubernetes'] = {
+            'resource_name': labels.get('trivy-operator.resource.name', ''),
+            'namespace_name': labels.get('trivy-operator.resource.namespace', ''),
+            'container_name': labels.get('trivy-operator.container.name', ''),
+            'resource_kind': labels.get('trivy-operator.resource.kind', '')
+        }
+
+        metadata['report'] = {
+            'artifact': {
+                'repository': report.get('artifact', {}).get('repository', ''),
+                'tag': report.get('artifact', {}).get('tag', '')
+            },
+            'registry': report.get('registry', ''),
+            'scanner': report.get('scanner', '')
+        }
 
         return metadata
     except Exception as e:
@@ -154,6 +154,7 @@ def get_pods_data(resource_data):
         v1_client = client.CoreV1Api()
         ns_pods = v1_client.list_namespaced_pod(namespace=resource_data['namespace_name'])
         related_pods = []
+
         for ns_pod in ns_pods.items:
             if ns_pod.metadata.owner_references and ns_pod.metadata.owner_references[0].name == resource_data['resource_name']:
                 pod_data = {
