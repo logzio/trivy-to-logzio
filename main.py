@@ -13,11 +13,15 @@ ENV_LOGZIO_LISTENER = 'LOGZIO_LOG_LISTENER'
 ENV_ENV_ID = 'ENV_ID'
 ENV_LOG_LEVEL = 'LOG_LEVEL'
 ENV_SCHEDULE = 'SCHEDULE'
+ENV_IMAGE_VERSION = 'IMAGE_VERSION'
 LOGZIO_TOKEN = os.getenv(ENV_LOGS_TOKEN, '')
 LOGZIO_LISTENER = os.getenv(ENV_LOGZIO_LISTENER, 'https://listener.logz.io:8071')
 ENV_ID = os.getenv(ENV_ENV_ID, '')
 RUN_SCHEDULE = os.getenv(ENV_SCHEDULE, '07:00')
 GROUP = 'aquasecurity.github.io'
+PACKAGE_NAME = "logzio-trivy"
+APP_VERSION = os.getenv(ENV_IMAGE_VERSION, 'unknown')
+SHIPPER_HEADER = {"user-agent": f"{PACKAGE_NAME}-version-{APP_VERSION}-logs"}
 VERSION = 'v1alpha1'
 CRDS = ['vulnerabilityreports']
 
@@ -98,7 +102,6 @@ def get_logzio_fields():
     return {'type': 'trivy_scan',
             'env_id': ENV_ID}
 
-
 def get_report_metadata(item):
     try:
         metadata = dict()
@@ -162,7 +165,7 @@ def send_to_logzio(log, http_client):
     data_body = json.dumps(log)
     data_body_bytes = str.encode(data_body)
     url = f'{LOGZIO_LISTENER}?token={LOGZIO_TOKEN}'
-    headers = {'Content-type': 'application/json'}
+    headers = {'Content-type': 'application/json', **SHIPPER_HEADER}
     while try_num <= max_retries:
         try:
             time.sleep(try_num * 2)
