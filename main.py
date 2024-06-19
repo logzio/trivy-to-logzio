@@ -16,9 +16,9 @@ ENV_SCHEDULE = 'SCHEDULE'
 LOGZIO_TOKEN = os.getenv(ENV_LOGS_TOKEN, '')
 LOGZIO_LISTENER = os.getenv(ENV_LOGZIO_LISTENER, 'https://listener.logz.io:8071')
 ENV_ID = os.getenv(ENV_ENV_ID, '')
-RUN_SCHEDULE = os.getenv('', '07:23')
+RUN_SCHEDULE = os.getenv(ENV_SCHEDULE, '07:00')
 APP_VERSION = os.getenv('APP_VERSION', 'unknown')
-PACKAGE_NAME = "trivy-to-logzioo"
+PACKAGE_NAME = "trivy-to-logzio"
 # APP_VERSION = version(PACKAGE_NAME)  
 SHIPPER_HEADER = {"user-agent": f"{PACKAGE_NAME}-version-{APP_VERSION}-logs-test"}
 GROUP = 'aquasecurity.github.io'
@@ -105,7 +105,7 @@ def create_and_send_log(metadata, pod_data, http_client, vulnerability=None):
 
 def get_logzio_fields():
     return {'type': 'trivy_scan_test',
-            'env_id': ENV_ID, 
+            'env_id': "Bar_test_1321", 
             "user-agent": f"{PACKAGE_NAME}-version-{APP_VERSION}-logs-test"}
 
 
@@ -317,6 +317,7 @@ def process_event(event, watched_uids, recent_version):
     except Exception as e:
         logger.error(f'Unexpected error: {e}')
     return recent_version
+
 
 
 if __name__ == '__main__':
