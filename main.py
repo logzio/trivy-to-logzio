@@ -17,9 +17,8 @@ LOGZIO_TOKEN = os.getenv(ENV_LOGS_TOKEN, '')
 LOGZIO_LISTENER = os.getenv(ENV_LOGZIO_LISTENER, 'https://listener.logz.io:8071')
 ENV_ID = os.getenv(ENV_ENV_ID, '')
 RUN_SCHEDULE = os.getenv(ENV_SCHEDULE, '07:00')
-# APP_VERSION = os.getenv('APP_VERSION', 'unknown')
+APP_VERSION = os.getenv('APP_VERSION', 'unknown')
 PACKAGE_NAME = "trivy-to-logzio"
-APP_VERSION = version(PACKAGE_NAME)  
 SHIPPER_HEADER = {"user-agent": f"{PACKAGE_NAME}-version-{APP_VERSION}-logs-test"}
 GROUP = 'aquasecurity.github.io'
 VERSION = 'v1alpha1'
@@ -97,16 +96,12 @@ def create_and_send_log(metadata, pod_data, http_client, vulnerability=None):
     else:
         log['message'] = 'No vulnerabilities for this pod at the moment.'
 
-    # Debug log for the complete log content
-    logger.info(f"Attempting to send this log:\n{json.dumps(log, indent=2)}")
-
     send_to_logzio(log, http_client)
 
 
 def get_logzio_fields():
     return {'type': 'trivy_scan',
-            'env_id': 'Bar_test_1353', 
-            **SHIPPER_HEADER}
+            'env_id': ENV_ID}
 
 
 def get_report_metadata(item):
