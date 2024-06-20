@@ -38,7 +38,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
-            VERSION=${{ env.VERSION }}
+            VERSION=${{ github.event.release.tag_name }}
           tags: |
             logzio/trivy-to-logzio:latest
             logzio/trivy-to-logzio:${{ env.VERSION }}
@@ -79,6 +79,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
-            VERSION=${{ env.VERSION }}
+            VERSION=${{ github.event.release.tag_name }}
           tags: |
             public.ecr.aws/logzio/trivy-to-logzio:${{ env.VERSION }}
