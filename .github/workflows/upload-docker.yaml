@@ -40,6 +40,7 @@ jobs:
           build-args: |
             VERSION=${{ env.VERSION }}
           tags: |
+            logzio/trivy-to-logzio:latest
             logzio/trivy-to-logzio:${{ env.VERSION }}
 
   ecr-public:
