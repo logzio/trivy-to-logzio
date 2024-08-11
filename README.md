@@ -8,7 +8,11 @@ To use it, see Logz.io's [logzio-trivy Helm Chart](https://github.com/logzio/log
 
 
 ## Changelog:
-
+- **0.2.3**:
+  - Upgrade python version to 3.12.5.
+  - Re-build image to include the latest version of git(CVE-2024-32002).
+- **0.2.2**:
+  - Added 'user-agent' header for telemetry data.
 - **0.2.1**:
   - Bump base docker image version.
   - Bump packages in requirements.
