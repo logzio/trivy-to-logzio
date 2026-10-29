@@ -1,12 +1,14 @@
 import json
 import logging
 import os
+import sys
 import time
 import threading
 from kubernetes import client, config, watch
+from kubernetes.client.exceptions import ApiException
 import urllib3
+from urllib3.exceptions import ProtocolError
 import schedule
-from importlib.metadata import version, PackageNotFoundError
 
 ENV_LOGS_TOKEN = 'LOGZIO_LOG_SHIPPING_TOKEN'
 ENV_LOGZIO_LISTENER = 'LOGZIO_LOG_LISTENER'
@@ -40,8 +42,6 @@ config.load_incluster_config()
 
 
 def run_logic():
-    if not is_valid_input():
-        return
     get_reports()
     logger.info('Done processing')
 
@@ -51,7 +51,7 @@ def is_valid_input():
         logger.error(f'{ENV_LOGS_TOKEN} not supplied. Exiting.')
         return False
     if ENV_ID == '':
-        logger.error(f'{ENV_LOGS_TOKEN} not supplied. Exiting.')
+        logger.error(f'{ENV_ENV_ID} not supplied. Exiting.')
         return False
     return True
 
@@ -254,7 +254,7 @@ def watch_crd(custom_resource_name):
             logger.debug(f'Latest resource version: {resource_version}')
             if resource_version > 0:
                 for event in w.stream(custom_api.list_namespaced_custom_object,
-                                      GROUP, VERSION, '', custom_resource_name, watch=True, timeout_seconds=240, resource_version=resource_version):
+                                      GROUP, VERSION, '', custom_resource_name, watch=True, timeout_seconds=240, resource_version=str(resource_version)):
                     resource_version = process_event(event, watched_uids, resource_version)
             else:
                 for event in w.stream(custom_api.list_namespaced_custom_object,
@@ -265,14 +265,19 @@ def watch_crd(custom_resource_name):
             logger.debug(f'running: {threading.enumerate()}')
             logger.debug('Restarting watch in 5 seconds')
             time.sleep(5)
-        except exceptions.ProtocolError as pe:
+        except ProtocolError as pe:
             logger.info(f'Received: {pe}')
             logger.info('Will close and reopen watch in 5 seconds')
             w.stop()
             time.sleep(5)
             continue
         except Exception as e:
-            logger.warning(f'Error while watching for new {custom_resource_name}: {e}, will retry watch')
+            if isinstance(e, ApiException) and e.status == 410:
+                # Resource version expired, restart the watch from scratch. Already shipped reports are skipped by watched_uids.
+                logger.info(f'Resource version {resource_version} expired, restarting watch from latest state')
+                resource_version = 0
+            else:
+                logger.warning(f'Error while watching for new {custom_resource_name}: {e}, will retry watch')
             w.stop()
             time.sleep(5)
             continue
@@ -317,6 +322,8 @@ def process_event(event, watched_uids, recent_version):
 
 if __name__ == '__main__':
     logger.info('Starting Trivy-to-Logzio')
+    if not is_valid_input():
+        sys.exit(1)
 
     # scheduled run
     schedule.every().day.at(RUN_SCHEDULE).do(run_logic)

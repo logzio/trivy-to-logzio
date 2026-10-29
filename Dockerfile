@@ -1,22 +1,15 @@
-FROM python:3.12.5-slim
-
-# Install git
-RUN apt-get update && apt-get install -y git
+FROM python:3.15.2-slim
 
 RUN mkdir logzio
 WORKDIR logzio
 
-COPY .git ./.git
-COPY main.py .
-COPY pyproject.toml ./
-COPY setup.py ./
 COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install the rest of the dependencies
-RUN pip install --upgrade pip setuptools>=68 setuptools_scm && pip install -r requirements.txt
+COPY main.py .
 
-# Set environment variable for version
-ARG VERSION=$(cat VERSION)
+# Set by CI from the release tag
+ARG VERSION=unknown
 ENV APP_VERSION=${VERSION}
 
 ENTRYPOINT ["python", "./main.py"]
