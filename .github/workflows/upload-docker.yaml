@@ -32,7 +32,7 @@ jobs:
           echo "VERSION=${{ github.event.release.tag_name }}"
 
       - name: Build and push version to Docker Hub
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -75,7 +75,7 @@ jobs:
           echo "VERSION=${{ github.event.release.tag_name }}"
 
       - name: Build and push version to Public ECR
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
